@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  ADMIN
+  MANAGER
+  STAFF
+}
+
+enum MembershipStatus {
+  ACTIVE
+  REMOVED
+}
+
+enum EmailTokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum TicketSource {
+  INTERNAL
+  PORTAL
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_REQUESTER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum CloseReason {
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum CommentVisibility {
+  PUBLIC
+  INTERNAL
+}
+
+enum CommentAuthorType {
+  STAFF
+  REQUESTER
+}
+
+enum ActivityType {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  TEAM_CHANGED
+  PRIORITY_CHANGED
+  DUE_DATE_CHANGED
+  CATEGORY_CHANGED
+  EDITED
+  SUBTICKET_ADDED
+}
+
+enum NotificationType {
+  NEEDS_ASSIGNMENT
+  ASSIGNED_TO_YOU
+  COMPLAINT_RECEIVED
+  STAFF_REPLIED
+  REQUESTER_REPLIED
+  WAITING_ON_YOU
+  RESOLVED
+  CLOSED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  name            String
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  sessions        Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
