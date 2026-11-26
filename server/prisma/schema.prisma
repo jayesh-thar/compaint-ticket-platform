@@ -99,6 +99,7 @@ model User {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   sessions        Session[]
+  emailTokens     EmailToken[]
 
   @@map("users")
 }
@@ -117,4 +118,19 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+model EmailToken {
+  id        String         @id @default(uuid())
+  userId    String
+  type      EmailTokenType
+  tokenHash String         @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime       @default(now())
+
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_tokens")
 }
