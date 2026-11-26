@@ -30,7 +30,7 @@ export const RequireVerified: React.FC<{ children: React.ReactNode }> = ({ child
           body: JSON.stringify({ email: user?.email }),
         });
         setMessage('A new verification email has been sent. Please check your inbox.');
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (err instanceof ClientApiError) {
           setError(err.message);
         } else {
@@ -50,7 +50,8 @@ export const RequireVerified: React.FC<{ children: React.ReactNode }> = ({ child
             </div>
             <CardTitle>Verify your email</CardTitle>
             <CardDescription>
-              We sent a verification link to <strong className="text-slate-800">{user?.email}</strong>. Please check your email to activate your account.
+              We sent a verification link to <strong className="text-slate-800">{user?.email}</strong>. Please check
+              your email to activate your account.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

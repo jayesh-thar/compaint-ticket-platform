@@ -7,6 +7,7 @@ import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../../components/ui/card';
 import { AlertCircle } from 'lucide-react';
+import { takeReturnTo } from '../../../lib/return-to';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -18,7 +19,8 @@ export const LoginPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const returnTo = searchParams.get('returnTo') || '/';
+  // Only same-site paths ("/w/acme"), never "//evil.com" or "https://..." (see lib/return-to).
+  const queryReturnTo = searchParams.get('returnTo');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,8 +33,8 @@ export const LoginPage: React.FC = () => {
         body: JSON.stringify({ email, password }),
       });
       await refetchUser();
-      navigate(returnTo);
-    } catch (err: any) {
+      navigate(takeReturnTo(queryReturnTo));
+    } catch (err: unknown) {
       if (err instanceof ClientApiError) {
         setError(err.message);
       } else {
@@ -91,7 +93,10 @@ export const LoginPage: React.FC = () => {
             </Button>
             <p className="text-xs text-center text-slate-500">
               Don't have an account?{' '}
-              <Link to="/register" className="text-blue-600 font-medium hover:underline">
+              <Link
+                to={queryReturnTo ? `/register?returnTo=${encodeURIComponent(queryReturnTo)}` : '/register'}
+                className="text-blue-600 font-medium hover:underline"
+              >
                 Create an account
               </Link>
             </p>

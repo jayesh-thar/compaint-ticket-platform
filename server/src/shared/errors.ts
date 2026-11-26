@@ -18,12 +18,7 @@ export class AppError extends Error {
   public readonly code: ErrorCode;
   public readonly fields?: Record<string, string>;
 
-  constructor(
-    statusCode: number,
-    code: ErrorCode,
-    message: string,
-    fields?: Record<string, string>
-  ) {
+  constructor(statusCode: number, code: ErrorCode, message: string, fields?: Record<string, string>) {
     super(message);
     this.name = 'AppError';
     this.statusCode = statusCode;
@@ -32,3 +27,10 @@ export class AppError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 }
+
+/**
+ * True when Prisma rejected a write because a UNIQUE constraint was hit (P2002).
+ * Used to turn "two people did the same thing at the same moment" into a clean 409.
+ */
+export const isUniqueViolation = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002';

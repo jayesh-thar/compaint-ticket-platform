@@ -7,7 +7,8 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
+    // Tests trigger expected errors (duplicate keys etc.); keep their output clean.
+    log: env.NODE_ENV === 'development' ? ['warn', 'error'] : env.NODE_ENV === 'test' ? [] : ['error'],
   });
 
 if (env.NODE_ENV !== 'production') {

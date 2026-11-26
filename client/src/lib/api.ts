@@ -21,8 +21,17 @@ export class ClientApiError extends Error {
   }
 }
 
+/**
+ * Every server route lives under /api/v1 (and Vite only proxies /api in dev),
+ * so callers pass the short path ('/auth/me', '/orgs/acme') and we prefix it here.
+ */
+export const toApiUrl = (endpoint: string): string => {
+  if (endpoint.startsWith('/api/')) return endpoint;
+  return `/api/v1${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+};
+
 export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = endpoint.startsWith('/') ? endpoint : `/api/v1/${endpoint}`;
+  const url = toApiUrl(endpoint);
 
   const response = await fetch(url, {
     ...options,
@@ -44,6 +53,16 @@ export async function apiFetch<T>(endpoint: string, options: RequestInit = {}): 
       code: 'INTERNAL_ERROR',
       message: response.statusText || 'An unexpected error occurred.',
     };
+
+    // Session expired mid-work: send the user to login and bring them back here
+    // afterwards. Auth endpoints handle 401 themselves (e.g. "wrong password").
+    if (response.status === 401 && !url.startsWith('/api/v1/auth/')) {
+      const here = window.location.pathname + window.location.search;
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign(`/login?returnTo=${encodeURIComponent(here)}`);
+      }
+    }
+
     throw new ClientApiError(response.status, errorData);
   }
 

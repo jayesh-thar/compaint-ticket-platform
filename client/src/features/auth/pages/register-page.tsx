@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { loginUrl, rememberReturnTo, safePath } from '../../../lib/return-to';
 import { apiFetch, ClientApiError } from '../../../lib/api';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -8,6 +9,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 export const RegisterPage: React.FC = () => {
+  // Coming from the portal? Remember where to return after verify + login.
+  const [searchParams] = useSearchParams();
+  const returnTo = safePath(searchParams.get('returnTo'));
+  const loginLink = returnTo ? loginUrl(returnTo) : '/login';
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,8 +32,9 @@ export const RegisterPage: React.FC = () => {
         method: 'POST',
         body: JSON.stringify({ name, email, password }),
       });
+      rememberReturnTo(returnTo);
       setSuccessMessage(res.message);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof ClientApiError) {
         setError(err.message);
         if (err.fields) setFieldErrors(err.fields);
@@ -52,7 +58,7 @@ export const RegisterPage: React.FC = () => {
             <CardDescription>{successMessage}</CardDescription>
           </CardHeader>
           <CardFooter className="flex justify-center">
-            <Link to="/login">
+            <Link to={loginLink}>
               <Button variant="outline">Return to Sign In</Button>
             </Link>
           </CardFooter>
@@ -118,7 +124,7 @@ export const RegisterPage: React.FC = () => {
             </Button>
             <p className="text-xs text-center text-slate-500">
               Already have an account?{' '}
-              <Link to="/login" className="text-blue-600 font-medium hover:underline">
+              <Link to={loginLink} className="text-blue-600 font-medium hover:underline">
                 Sign In
               </Link>
             </p>

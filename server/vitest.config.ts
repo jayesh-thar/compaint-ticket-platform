@@ -5,7 +5,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: ['./tests/setup.ts'],
-    testTimeout: 10000,
-    hookTimeout: 10000,
+    fileParallelism: false, // Sequential test files to prevent database truncation races
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
 });

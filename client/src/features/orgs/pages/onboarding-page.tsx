@@ -1,0 +1,131 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../auth/auth-context';
+import { Button } from '../../../components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../components/ui/card';
+import { Building2, MessageSquareText, PlusCircle, ArrowRight, LogOut, AlertCircle } from 'lucide-react';
+import { useMyOrgs } from '../org-api';
+
+export const OnboardingPage: React.FC = () => {
+  const { user, logout } = useAuth();
+  const { data, isLoading, isError, refetch } = useMyOrgs();
+  const orgs = data?.organizations ?? [];
+
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <header className="bg-white border-b border-slate-200 px-4 sm:px-6 h-14 flex items-center justify-between">
+        <span className="font-semibold text-slate-900">Complaint &amp; Ticket Portal</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 hidden sm:inline">{user?.email}</span>
+          <Button variant="ghost" size="sm" onClick={logout} className="gap-1">
+            <LogOut className="h-4 w-4" /> Log out
+          </Button>
+        </div>
+      </header>
+
+      <main className="w-full max-w-3xl mx-auto p-6 space-y-8">
+        <div className="text-center space-y-2 pt-4">
+          <h1 className="text-3xl font-extrabold text-slate-900">Welcome, {user?.name}</h1>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">
+            Open one of your organizations, create a new one, or use an organization&apos;s link to submit a complaint.
+          </p>
+        </div>
+
+        {isLoading && (
+          <div className="flex justify-center py-6">
+            <div className="h-6 w-6 animate-spin rounded-full border-4 border-blue-600 border-t-transparent" />
+          </div>
+        )}
+
+        {isError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 p-3 text-sm text-red-800 bg-red-50 rounded-md border border-red-200"
+          >
+            <span className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4" /> Could not load your organizations.
+            </span>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {orgs.length > 0 && (
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Your organizations</CardTitle>
+              <CardDescription>Select one to open its workspace</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {orgs.map((org) => (
+                <Link
+                  key={org.id}
+                  to={`/w/${org.slug}`}
+                  className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 shrink-0 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center font-bold">
+                      {org.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-semibold text-slate-900 text-sm truncate">{org.name}</h4>
+                      <p className="text-xs text-slate-500">
+                        /w/{org.slug} · {org.role}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1 text-xs text-blue-600">
+                    Open <ArrowRight className="h-3 w-3" />
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-6">
+          <Card className="shadow-sm">
+            <CardHeader>
+              <div className="h-10 w-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mb-2">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <CardTitle>Create an organization</CardTitle>
+              <CardDescription>Set up a workspace for your college, company, or support department.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link to="/orgs/new">
+                <Button className="w-full gap-2">
+                  <PlusCircle className="h-4 w-4" />
+                  Create organization
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader>
+              <div className="h-10 w-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
+                <MessageSquareText className="h-5 w-5" />
+              </div>
+              <CardTitle>I want to submit a complaint</CardTitle>
+              <CardDescription>Are you a student or customer?</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Use your organization&apos;s complaint link, which looks like{' '}
+                <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">/o/&lt;organization&gt;</code>. Ask
+                them for it if you don&apos;t have it.
+              </p>
+              <Link to="/my/complaints" className="mt-3 block">
+                <Button variant="outline" className="w-full">
+                  My complaints
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+};

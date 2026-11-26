@@ -11,7 +11,7 @@ export const getHealth = async (_req: Request, res: Response): Promise<void> => 
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
     });
-  } catch (_error) {
+  } catch {
     res.status(503).json({
       status: 'error',
       database: 'disconnected',

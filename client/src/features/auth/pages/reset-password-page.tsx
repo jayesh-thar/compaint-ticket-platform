@@ -44,7 +44,7 @@ export const ResetPasswordPage: React.FC = () => {
       });
       setMessage(res.message);
       setTimeout(() => navigate('/login'), 2500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof ClientApiError) {
         setError(err.message);
       } else {

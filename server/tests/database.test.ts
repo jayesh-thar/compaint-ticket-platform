@@ -33,9 +33,7 @@ describe('Database Foundation (Phase 1)', () => {
   it('fails when inserting a duplicate email', async () => {
     await createUser({ email: 'duplicate@example.com' });
 
-    await expect(
-      createUser({ email: 'duplicate@example.com' })
-    ).rejects.toThrow();
+    await expect(createUser({ email: 'duplicate@example.com' })).rejects.toThrow();
   });
 
   it('cleanDatabase helper empties the tables', async () => {

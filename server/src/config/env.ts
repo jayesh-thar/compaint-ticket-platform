@@ -14,12 +14,27 @@ const envSchema = z.object({
   EMAIL_TRANSPORT: z.enum(['console', 'resend']).default('console'),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Complaint Portal <no-reply@example.com>'),
-  JOBS_ENABLED: z.enum(['true', 'false']).transform((v) => v === 'true').default('true'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  JOBS_ENABLED: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('true'),
+  LOG_LEVEL: z.enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+});
+
+// Production must send real email: the console transport would print one-time
+// tokens (verify, reset, invite) into the server logs.
+const envWithRules = envSchema.superRefine((e, ctx) => {
+  if (e.NODE_ENV === 'production' && (e.EMAIL_TRANSPORT !== 'resend' || !e.RESEND_API_KEY)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['EMAIL_TRANSPORT'],
+      message: 'In production set EMAIL_TRANSPORT=resend and RESEND_API_KEY.',
+    });
+  }
 });
 
 const parseEnv = () => {
-  const result = envSchema.safeParse(process.env);
+  const result = envWithRules.safeParse(process.env);
   if (!result.success) {
     const formatted = result.error.format();
     console.error('Invalid environment variables:', JSON.stringify(formatted, null, 2));

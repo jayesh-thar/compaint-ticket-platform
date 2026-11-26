@@ -23,13 +23,11 @@ describe('Authentication (Phase 2)', () => {
     const emailSendSpy = vi.spyOn(emailTransport, 'send').mockResolvedValue(undefined);
 
     // 1. Register
-    const regRes = await request(app)
-      .post('/api/v1/auth/register')
-      .send({
-        name: 'John Doe',
-        email: 'john@example.com',
-        password: 'Password123!',
-      });
+    const regRes = await request(app).post('/api/v1/auth/register').send({
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'Password123!',
+    });
 
     expect(regRes.status).toBe(200);
     expect(regRes.body.message).toContain('verification link has been sent');
@@ -49,9 +47,7 @@ describe('Authentication (Phase 2)', () => {
     expect(hashToken(rawToken)).toBe(tokenRecord!.tokenHash);
 
     // 2. Verify Email
-    const verifyRes = await request(app)
-      .post('/api/v1/auth/verify-email')
-      .send({ token: rawToken });
+    const verifyRes = await request(app).post('/api/v1/auth/verify-email').send({ token: rawToken });
 
     expect(verifyRes.status).toBe(200);
     expect(verifyRes.body.message).toContain('successfully verified');
@@ -62,12 +58,10 @@ describe('Authentication (Phase 2)', () => {
     expect(verifiedUser?.emailVerifiedAt).not.toBeNull();
 
     // 3. Login
-    const loginRes = await request(app)
-      .post('/api/v1/auth/login')
-      .send({
-        email: 'john@example.com',
-        password: 'Password123!',
-      });
+    const loginRes = await request(app).post('/api/v1/auth/login').send({
+      email: 'john@example.com',
+      password: 'Password123!',
+    });
 
     expect(loginRes.status).toBe(200);
     expect(loginRes.body.user.email).toBe('john@example.com');
@@ -80,31 +74,25 @@ describe('Authentication (Phase 2)', () => {
     expect(sidCookie).toContain('HttpOnly');
 
     // 4. GET /me with session cookie
-    const meRes = await request(app)
-      .get('/api/v1/auth/me')
-      .set('Cookie', sidCookie);
+    const meRes = await request(app).get('/api/v1/auth/me').set('Cookie', sidCookie);
 
     expect(meRes.status).toBe(200);
     expect(meRes.body.user.email).toBe('john@example.com');
 
     // 5. Logout
-    const logoutRes = await request(app)
-      .post('/api/v1/auth/logout')
-      .set('Cookie', sidCookie);
+    const logoutRes = await request(app).post('/api/v1/auth/logout').set('Cookie', sidCookie);
 
     expect(logoutRes.status).toBe(200);
 
     // 6. Accessing /me after logout fails
-    const meAfterLogout = await request(app)
-      .get('/api/v1/auth/me')
-      .set('Cookie', sidCookie);
+    const meAfterLogout = await request(app).get('/api/v1/auth/me').set('Cookie', sidCookie);
 
     expect(meAfterLogout.status).toBe(401);
     expect(meAfterLogout.body.error.code).toBe('UNAUTHENTICATED');
   });
 
   it('gives generic responses for existing registration and unknown login/reset', async () => {
-    const emailSendSpy = vi.spyOn(emailTransport, 'send').mockResolvedValue(undefined);
+    vi.spyOn(emailTransport, 'send').mockResolvedValue(undefined);
 
     // First registration
     await request(app)
@@ -120,9 +108,7 @@ describe('Authentication (Phase 2)', () => {
     expect(dupRes.body.message).toContain('verification link has been sent');
 
     // Forgot password with unknown email returns generic 200
-    const forgotRes = await request(app)
-      .post('/api/v1/auth/forgot-password')
-      .send({ email: 'unknown@example.com' });
+    const forgotRes = await request(app).post('/api/v1/auth/forgot-password').send({ email: 'unknown@example.com' });
 
     expect(forgotRes.status).toBe(200);
     expect(forgotRes.body.message).toContain('password reset link has been sent');
@@ -146,9 +132,7 @@ describe('Authentication (Phase 2)', () => {
 
   it('rejects expired, used, or unknown tokens', async () => {
     // Unknown token
-    const resUnknown = await request(app)
-      .post('/api/v1/auth/verify-email')
-      .send({ token: 'unknown_token_value' });
+    const resUnknown = await request(app).post('/api/v1/auth/verify-email').send({ token: 'unknown_token_value' });
 
     expect(resUnknown.status).toBe(400);
     expect(resUnknown.body.error.code).toBe('VALIDATION_ERROR');
@@ -171,9 +155,7 @@ describe('Authentication (Phase 2)', () => {
       },
     });
 
-    const resExpired = await request(app)
-      .post('/api/v1/auth/verify-email')
-      .send({ token: 'expired_token' });
+    const resExpired = await request(app).post('/api/v1/auth/verify-email').send({ token: 'expired_token' });
 
     expect(resExpired.status).toBe(400);
     expect(resExpired.body.error.code).toBe('VALIDATION_ERROR');
@@ -207,9 +189,7 @@ describe('Authentication (Phase 2)', () => {
     expect((await request(app).get('/api/v1/auth/me').set('Cookie', cookie2)).status).toBe(200);
 
     // Request password reset
-    await request(app)
-      .post('/api/v1/auth/forgot-password')
-      .send({ email: 'reset@example.com' });
+    await request(app).post('/api/v1/auth/forgot-password').send({ email: 'reset@example.com' });
 
     const resetEmailText = emailSendSpy.mock.calls[1][0].text;
     const resetToken = resetEmailText.match(/#token=([a-zA-Z0-9_-]+)/)![1];

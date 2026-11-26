@@ -13,11 +13,7 @@ declare global {
   }
 }
 
-export const sessionMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const sessionMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const sid = req.cookies?.sid;
 
   if (!sid || typeof sid !== 'string') {

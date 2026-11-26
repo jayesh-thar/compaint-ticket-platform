@@ -1,16 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../shared/errors.js';
-import {
-  generateToken,
-  hashToken,
-  hashPassword,
-  verifyPassword,
-} from '../../shared/crypto.js';
-import {
-  sendVerificationEmail,
-  sendPasswordResetEmail,
-  sendAccountExistsNoticeEmail,
-} from '../../shared/email.js';
+import { generateToken, hashToken, hashPassword, verifyPassword } from '../../shared/crypto.js';
+import { sendVerificationEmail, sendPasswordResetEmail, sendAccountExistsNoticeEmail } from '../../shared/email.js';
 import type {
   RegisterInput,
   LoginInput,

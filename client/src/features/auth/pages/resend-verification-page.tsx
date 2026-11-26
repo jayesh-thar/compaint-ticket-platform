@@ -24,7 +24,7 @@ export const ResendVerificationPage: React.FC = () => {
         body: JSON.stringify({ email }),
       });
       setMessage(res.message);
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (err instanceof ClientApiError) {
         setError(err.message);
       } else {

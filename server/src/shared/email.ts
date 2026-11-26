@@ -101,3 +101,12 @@ export const sendAccountExistsNoticeEmail = async (toEmail: string) => {
     text: `Someone attempted to create an account using your email address on the Complaint Portal.\n\nIf this was you, you can log in or reset your password here:\n${forgotUrl}\n\nIf you did not attempt to register, no action is required.\n\nReplies to this email are not monitored.`,
   });
 };
+
+export const sendInvitationEmail = async (toEmail: string, token: string, orgName: string, role: string) => {
+  const inviteUrl = `${env.APP_ORIGIN}/invite#token=${token}`;
+  await emailTransport.send({
+    to: toEmail,
+    subject: `You have been invited to join ${orgName}`,
+    text: `You have been invited to join ${orgName} as ${role}.\n\nAccept your invitation by clicking the link below:\n\n${inviteUrl}\n\nThis invitation link is valid for 7 days.\n\nReplies to this email are not monitored.`,
+  });
+};

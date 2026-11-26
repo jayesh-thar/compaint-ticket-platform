@@ -5,10 +5,15 @@ managers create internal tickets and assign them downward, and customers or
 students submit complaints upward. Both land in **one ticket system** with one
 lifecycle, one assignment model, one conversation history, and one dashboard.
 
-> **Project status:** Specification v2 (simplified). Phase 0 (project setup)
-> is complete; no product features are implemented yet.
-> A feature must not be described as implemented until it is built **and
-> tested**. Progress is tracked in [`planning.md`](planning.md).
+> **Project status:** Phases 0-10 are built and tested locally: accounts,
+> organizations and invitations, teams and categories, internal tickets with
+> sub-tickets, the status workflow, comments with the email outbox, the
+> complaint portal and "My complaints", the dashboard, auto-close, and a
+> hardening pass (tenant-isolation suite, rate limits, log redaction, lint).
+> Not done yet: deployment (Phase 11) and Docker/CI (Phase 12).
+> Progress is tracked in [`planning.md`](planning.md); demo steps in
+> [`docs/demo-script.md`](docs/demo-script.md); trade-offs in
+> [`docs/known-limitations.md`](docs/known-limitations.md).
 
 **How the three documents fit together**
 
@@ -634,6 +639,7 @@ cd server
 npm install
 Copy-Item .env.example .env        # then edit DATABASE_URL / TEST_DATABASE_URL
 npx prisma migrate dev
+npm run seed                       # optional: demo data (dev only, password Password123!)
 npm run dev                        # http://localhost:5000
 
 # 3. Client (second terminal)
@@ -646,7 +652,10 @@ npm run dev                        # http://localhost:5173 (proxies /api to :500
 - Emails print to the **server terminal** (`EMAIL_TRANSPORT=console`); copy the
   link from there.
 - Before every commit: `npm run format:check`, `npm run lint`,
-  `npm run typecheck`, `npm test`, `npm run build` (in `server/` and `client/`).
+  `npm run typecheck`, `npm test` (server), `npm run build` (in `server/` and `client/`).
+  `npm run format` fixes formatting.
+- Stop `npm run dev` before `npx prisma migrate dev` on Windows (the running
+  server locks Prisma's engine file).
 - Docker is **not** needed until the final phase.
 
 ## 15. Testing strategy
@@ -732,6 +741,12 @@ mobile app.
 | D-13 | Comments are plain text and immutable | No XSS surface; record stays trustworthy. |
 | D-14 | Docker and CI come last | Feature work never blocked by tooling. |
 | D-15 | Removed from the first draft: platform admin, audit log, Turnstile, magic-link requester access, idempotency keys, composite foreign keys, Playwright, OpenAPI | Too heavy for a solo project; isolation is enforced by middleware, org-scoped queries, and tests instead. |
+| D-16 | Staff and Leads must choose one of their teams when creating a ticket; only Managers/Admins create team-less tickets | "Own team" in the matrix implies a team; keeps the Unassigned queue for Managers. |
+| D-17 | A Lead assigns only members of the ticket's team (even though Managers are eligible for every team) | Matches "members of own team" in the matrix. |
+| D-18 | When an `IN_PROGRESS` ticket loses its assignee (removal, team change) it returns to `OPEN` with a system activity | `IN_PROGRESS` needs an assignee; avoids a hidden half-state. |
+| D-19 | Removing a Manager/Admin from a team does not unassign their tickets | They stay eligible for every team (section 7.5). |
+| D-20 | Sub-tickets cannot be added to a `RESOLVED` or `CLOSED` parent; requester withdraw and confirm also wait for sub-tickets | One rule: a parent never finishes before its parts. |
+| D-21 | Field edits and assignment are blocked on `CLOSED` tickets (reopen first) | A closed record stays stable; reopening is logged. |
 
 If implementation raises a new question: write it down, pick the simplest
 answer consistent with these decisions, add a row here, add a test that locks
