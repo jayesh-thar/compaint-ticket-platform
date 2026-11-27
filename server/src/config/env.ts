@@ -14,6 +14,12 @@ const envSchema = z.object({
   EMAIL_TRANSPORT: z.enum(['console', 'resend']).default('console'),
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Complaint Portal <no-reply@example.com>'),
+  // Off (default) = new accounts are verified on sign-up and no verify email is sent.
+  // Turn on once a real email domain + Resend are set up.
+  EMAIL_VERIFICATION_REQUIRED: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .default('false'),
   JOBS_ENABLED: z
     .enum(['true', 'false'])
     .transform((v) => v === 'true')

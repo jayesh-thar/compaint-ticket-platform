@@ -18,6 +18,7 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [mustVerify, setMustVerify] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -28,11 +29,12 @@ export const RegisterPage: React.FC = () => {
     setIsSubmitting(true);
 
     try {
-      const res = await apiFetch<{ message: string }>('/auth/register', {
+      const res = await apiFetch<{ message: string; verificationRequired?: boolean }>('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ name, email, password }),
       });
       rememberReturnTo(returnTo);
+      setMustVerify(res.verificationRequired !== false);
       setSuccessMessage(res.message);
     } catch (err: unknown) {
       if (err instanceof ClientApiError) {
@@ -54,12 +56,14 @@ export const RegisterPage: React.FC = () => {
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
               <CheckCircle2 className="h-6 w-6" />
             </div>
-            <CardTitle>Check your email</CardTitle>
+            <CardTitle>{mustVerify ? 'Check your email' : 'Account created'}</CardTitle>
             <CardDescription>{successMessage}</CardDescription>
           </CardHeader>
           <CardFooter className="flex justify-center">
             <Link to={loginLink}>
-              <Button variant="outline">Return to Sign In</Button>
+              <Button variant={mustVerify ? 'outline' : 'default'}>
+                {mustVerify ? 'Return to Sign In' : 'Sign In'}
+              </Button>
             </Link>
           </CardFooter>
         </Card>

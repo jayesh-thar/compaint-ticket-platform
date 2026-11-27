@@ -5,6 +5,8 @@ import { prisma, disconnectPrisma } from '../src/config/prisma.js';
 import { cleanDatabase } from './helpers/db.js';
 import { emailTransport } from '../src/shared/email.js';
 import { hashToken } from '../src/shared/crypto.js';
+import { env } from '../src/config/env.js';
+import { createUser, createSession } from './helpers/factories.js';
 
 describe('Authentication (Phase 2)', () => {
   const app = createApp();
@@ -247,5 +249,49 @@ describe('Authentication (Phase 2)', () => {
 
     // Token must be 64-char hex string (SHA-256)
     expect(token?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  describe('with EMAIL_VERIFICATION_REQUIRED=false', () => {
+    beforeEach(() => {
+      env.EMAIL_VERIFICATION_REQUIRED = false;
+    });
+    afterAll(() => {
+      env.EMAIL_VERIFICATION_REQUIRED = true;
+    });
+
+    it('register creates a verified account, sends no email, and can create an org', async () => {
+      const emailSendSpy = vi.spyOn(emailTransport, 'send').mockResolvedValue(undefined);
+
+      const regRes = await request(app).post('/api/v1/auth/register').send({
+        name: 'No Verify',
+        email: 'noverify@example.com',
+        password: 'Password123!',
+      });
+      expect(regRes.status).toBe(200);
+      expect(regRes.body.verificationRequired).toBe(false);
+      expect(emailSendSpy).not.toHaveBeenCalled();
+      expect(await prisma.emailToken.count()).toBe(0);
+
+      const loginRes = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'noverify@example.com', password: 'Password123!' });
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.user.emailVerified).toBe(true);
+    });
+
+    it('lets an older unverified account through requireVerified', async () => {
+      const user = await createUser({ emailVerifiedAt: null });
+      const { cookie } = await createSession(user.id);
+
+      const me = await request(app).get('/api/v1/auth/me').set('Cookie', cookie);
+      expect(me.body.user.emailVerified).toBe(true);
+
+      const org = await request(app)
+        .post('/api/v1/orgs')
+        .set('Cookie', cookie)
+        .set('Origin', env.APP_ORIGIN)
+        .send({ name: 'Unverified Org', slug: 'unverified-org' });
+      expect(org.status).toBe(201);
+    });
   });
 });

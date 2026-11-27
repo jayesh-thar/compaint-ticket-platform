@@ -1,6 +1,7 @@
 import { prisma } from '../../config/prisma.js';
 import { AppError } from '../../shared/errors.js';
 import { generateToken, hashToken, hashPassword, verifyPassword } from '../../shared/crypto.js';
+import { env } from '../../config/env.js';
 import { sendVerificationEmail, sendPasswordResetEmail, sendAccountExistsNoticeEmail } from '../../shared/email.js';
 import type {
   RegisterInput,
@@ -9,6 +10,10 @@ import type {
   ForgotPasswordInput,
   ResetPasswordInput,
 } from './auth.schemas.js';
+
+/** True when verified, or when verification is switched off (covers older unverified accounts). */
+export const isEmailVerified = (emailVerifiedAt: Date | null): boolean =>
+  !env.EMAIL_VERIFICATION_REQUIRED || !!emailVerifiedAt;
 
 export const registerUser = async (input: RegisterInput) => {
   const existingUser = await prisma.user.findUnique({
@@ -24,6 +29,15 @@ export const registerUser = async (input: RegisterInput) => {
   }
 
   const passwordHash = await hashPassword(input.password);
+
+  // Verification switched off: account is usable straight away, no email sent.
+  if (!env.EMAIL_VERIFICATION_REQUIRED) {
+    await prisma.user.create({
+      data: { email: input.email, name: input.name, passwordHash, emailVerifiedAt: new Date() },
+    });
+    return { message: 'Account created. You can sign in now.', verificationRequired: false };
+  }
+
   const rawToken = generateToken();
   const tokenHash = hashToken(rawToken);
 
@@ -159,7 +173,7 @@ export const loginUser = async (input: LoginInput, userAgent?: string) => {
       id: user.id,
       email: user.email,
       name: user.name,
-      emailVerified: !!user.emailVerifiedAt,
+      emailVerified: isEmailVerified(user.emailVerifiedAt),
     },
   };
 };

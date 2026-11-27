@@ -96,7 +96,7 @@ export const getMe = (req: Request, res: Response): void => {
       id: user.id,
       email: user.email,
       name: user.name,
-      emailVerified: !!user.emailVerifiedAt,
+      emailVerified: authService.isEmailVerified(user.emailVerifiedAt),
       createdAt: user.createdAt,
     },
   });
