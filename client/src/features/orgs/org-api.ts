@@ -59,6 +59,8 @@ export interface MyOrg {
   name: string;
   slug: string;
   role: Role;
+  /** "Admin", "Head of Server team", "Member of Network", "Staff (no team yet)". */
+  roleLabel: string;
   membershipId: string;
 }
 
@@ -110,6 +112,8 @@ export interface Team {
   /** A team can be in several categories (D-31). */
   categories: { id: string; name: string }[];
   leader: Leader | null;
+  /** A Head / Lead / Manager invitation is still waiting to be accepted. */
+  leaderInvited: { title: LeaderTitle | null } | null;
   memberCount: number;
   liveTicketCount: number;
 }

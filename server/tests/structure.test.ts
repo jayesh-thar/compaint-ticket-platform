@@ -175,11 +175,21 @@ describe('Organization structure (README 0.2, 0.3, 0.8)', () => {
     for (const body of [
       { email: 'a@example.com', teamId: w.team2.id, teamRole: 'MEMBER' },
       { email: 'b@example.com', role: 'ADMIN', teamId: w.team1.id, teamRole: 'MEMBER' },
-      { email: 'c@example.com', teamId: w.team1.id, teamRole: 'LEADER', leaderTitle: 'LEAD' },
       { email: 'd@example.com' },
     ]) {
       expect((await api(w.lead1).post('/invitations', body)).status, JSON.stringify(body)).toBe(403);
     }
+    // Team 1 already has its leader: no second Head / Lead / Manager.
+    expect(
+      (
+        await api(w.lead1).post('/invitations', {
+          email: 'c@example.com',
+          teamId: w.team1.id,
+          teamRole: 'LEADER',
+          leaderTitle: 'LEAD',
+        })
+      ).status
+    ).toBe(409);
     expect(
       (await api(w.m1).post('/invitations', { email: 'e@example.com', teamId: w.team1.id, teamRole: 'MEMBER' })).status
     ).toBe(403);
@@ -195,6 +205,38 @@ describe('Organization structure (README 0.2, 0.3, 0.8)', () => {
     expect(
       await prisma.teamMember.count({ where: { teamId: w.team1.id, membershipId: w.outsider.membership.id } })
     ).toBe(1);
+  });
+
+  it('a leader invites the Head of a team without a leader; one leader invite per team; members cannot', async () => {
+    const empty = (await api(w.admin).post('/teams', { name: 'Empty team' })).body.team;
+    const headInvite = { email: 'head@example.com', teamId: empty.id, teamRole: 'LEADER', leaderTitle: 'HEAD' };
+    expect((await api(w.m1).post('/invitations', headInvite)).status).toBe(403);
+    // A leader may not add Staff to a team they do not lead.
+    expect(
+      (await api(w.lead1).post('/invitations', { email: 's@example.com', teamId: empty.id, teamRole: 'MEMBER' })).status
+    ).toBe(403);
+    expect((await api(w.lead1).post('/invitations', headInvite)).status).toBe(201);
+
+    const listed = (await api(w.m1).get('/teams')).body.teams.find((t: { id: string }) => t.id === empty.id);
+    expect(listed.leaderInvited).toEqual({ title: 'HEAD' });
+    expect(JSON.stringify(listed)).not.toContain('head@example.com');
+
+    // The slot is taken by the pending invite, also for the Admin.
+    const second = await api(w.admin).post('/invitations', {
+      ...headInvite,
+      email: 'other@example.com',
+      leaderTitle: 'MANAGER',
+    });
+    expect(second.status).toBe(409);
+  });
+
+  it('my organizations list shows a readable role label', async () => {
+    const label = async (cookie: string) =>
+      (await request(app).get('/api/v1/me/orgs').set('Cookie', cookie)).body.organizations[0].roleLabel;
+    expect(await label(w.admin.cookie)).toBe('Admin');
+    expect(await label(w.lead1.cookie)).toBe('Head of Server team 01');
+    expect(await label(w.m1.cookie)).toBe('Member of Server team 01');
+    expect(await label(w.outsider.cookie)).toBe('Staff (no team yet)');
   });
 
   it('wrong account and a leader taken meanwhile are refused cleanly', async () => {

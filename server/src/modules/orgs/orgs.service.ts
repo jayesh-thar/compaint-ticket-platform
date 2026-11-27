@@ -45,10 +45,33 @@ export const createOrganization = async (userId: string, input: CreateOrgInput) 
   }
 };
 
+const TITLE_WORD = { HEAD: 'Head', LEAD: 'Lead', MANAGER: 'Manager' } as const;
+
+/** "Admin", "Head of Server team", "Member of Network +1 more", "Staff (no team yet)". */
+const roleLabel = (
+  role: MembershipRole,
+  teams: { role: 'LEADER' | 'MEMBER'; leaderTitle: keyof typeof TITLE_WORD | null; team: { name: string } }[]
+) => {
+  if (role === 'ADMIN') return 'Admin';
+  const led = teams.find((t) => t.role === 'LEADER');
+  const main = led ?? teams[0];
+  if (!main) return 'Staff (no team yet)';
+  const word = led ? TITLE_WORD[led.leaderTitle ?? 'LEAD'] : 'Member';
+  const more = teams.length > 1 ? ` +${teams.length - 1} more` : '';
+  return `${word} of ${main.team.name}${more}`;
+};
+
 export const getMyOrganizations = async (userId: string) => {
   const memberships = await prisma.membership.findMany({
     where: { userId, status: 'ACTIVE' },
-    include: { organization: true },
+    include: {
+      organization: true,
+      teamMemberships: {
+        where: { team: { archivedAt: null } },
+        select: { role: true, leaderTitle: true, team: { select: { name: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -58,6 +81,7 @@ export const getMyOrganizations = async (userId: string) => {
       name: m.organization.name,
       slug: m.organization.slug,
       role: m.role,
+      roleLabel: roleLabel(m.role, m.teamMemberships),
       membershipId: m.id,
       joinedAt: m.createdAt,
     })),

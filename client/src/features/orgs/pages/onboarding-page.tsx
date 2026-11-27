@@ -71,7 +71,7 @@ export const OnboardingPage: React.FC = () => {
                     <div className="min-w-0">
                       <h4 className="font-semibold text-slate-900 text-sm truncate">{org.name}</h4>
                       <p className="text-xs text-slate-500">
-                        /w/{org.slug} · {org.role}
+                        /w/{org.slug} · {org.roleLabel ?? org.role}
                       </p>
                     </div>
                   </div>

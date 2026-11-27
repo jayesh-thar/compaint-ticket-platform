@@ -171,7 +171,7 @@ export const MembersPage: React.FC = () => {
         </CardContent>
       </Card>
 
-      {inviteOpen && <InviteDialog slug={org.slug} open isAdmin onClose={() => setInviteOpen(false)} />}
+      {inviteOpen && <InviteDialog slug={org.slug} open onClose={() => setInviteOpen(false)} />}
     </div>
   );
 };

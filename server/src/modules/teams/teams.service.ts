@@ -65,6 +65,11 @@ export const listTeams = async (orgId: string, includeArchived: boolean) => {
     include: {
       categories: { where: { archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } },
       members: { include: { membership: { select: { id: true, user: { select: { name: true } } } } } },
+      invitations: {
+        where: { teamRole: 'LEADER', acceptedAt: null, revokedAt: null, expiresAt: { gt: new Date() } },
+        select: { leaderTitle: true },
+        take: 1,
+      },
       _count: { select: { tickets: { where: { stage: { in: LIVE_STAGES } } } } },
     },
     orderBy: { name: 'asc' },
@@ -77,6 +82,8 @@ export const listTeams = async (orgId: string, includeArchived: boolean) => {
       archived: t.archivedAt !== null,
       categories: t.categories,
       leader: leaderOf(t.members),
+      /** A Head / Lead / Manager invitation is waiting (no email here: every member sees this list). */
+      leaderInvited: t.invitations[0] ? { title: t.invitations[0].leaderTitle } : null,
       memberCount: t.members.length,
       liveTicketCount: t._count.tickets,
     })),

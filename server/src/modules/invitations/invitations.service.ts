@@ -73,12 +73,25 @@ const logAcceptFailure = (reason: string, email: string, organization?: string) 
   }
 };
 
-/** Admin: anything. Team Leader: Staff members of their own team only (README 0.8). */
+/**
+ * Admin: anything. Team Leader (Head / Lead / Manager), always as org Staff:
+ * - a Member (Staff) of a team they lead, or
+ * - the Head / Lead / Manager of a team that has no leader yet (checked below).
+ */
 const checkInvitePermission = (actor: Actor, input: Pick<CreateInput, 'role' | 'teamId' | 'teamRole'>) => {
   if (isAdmin(actor)) return;
-  const ok = input.role === 'STAFF' && !!input.teamId && isLeaderOf(actor, input.teamId) && input.teamRole === 'MEMBER';
+  const leader = actor.leadTeamIds.length > 0;
+  const ok =
+    leader &&
+    input.role === 'STAFF' &&
+    !!input.teamId &&
+    (input.teamRole === 'LEADER' || isLeaderOf(actor, input.teamId));
   if (!ok) {
-    throw new AppError(403, 'FORBIDDEN', 'Team leaders can only invite members to their own team.');
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      'Team leaders can invite Staff to their own team, or a Head / Lead / Manager to a team without a leader.'
+    );
   }
 };
 
@@ -103,6 +116,20 @@ export const createInvitation = async (actor: Actor, org: { id: string; name: st
           'This team already has a leader. Change the leader on the team page first.',
           {
             teamRole: 'Team already has a leader.',
+          }
+        );
+      }
+      // Only one leader invitation per team can be open at a time.
+      const pendingLeader = await prisma.invitation.findFirst({
+        where: { ...pendingWhere(org.id), teamId: team.id, teamRole: 'LEADER', expiresAt: { gt: new Date() } },
+      });
+      if (pendingLeader) {
+        throw new AppError(
+          409,
+          'CONFLICT',
+          `A leader invitation for this team is already pending (${pendingLeader.email}).`,
+          {
+            teamRole: 'Leader already invited.',
           }
         );
       }

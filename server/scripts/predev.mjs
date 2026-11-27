@@ -28,7 +28,9 @@ const migrate = run(['migrate', 'deploy']);
 if (migrate.code !== 0) {
   const out = migrate.out;
   if (/P1001|Can't reach database/i.test(out)) {
-    fail('Cannot reach PostgreSQL. Start the PostgreSQL service (Windows: services.msc → postgresql) and check host/port in DATABASE_URL.');
+    fail(
+      'Cannot reach PostgreSQL. Start the PostgreSQL service (Windows: services.msc → postgresql) and check host/port in DATABASE_URL.'
+    );
   }
   if (/P1000|Authentication failed/i.test(out)) {
     fail('PostgreSQL rejected the username/password in DATABASE_URL.');

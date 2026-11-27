@@ -206,9 +206,9 @@ const MembersTab: React.FC<{ data: NonNullable<ReturnType<typeof useTeam>['data'
                     <Badge tone="green">Active</Badge>
                   </td>
                   <td className="px-4 py-2 text-right">
+                    {/* Admin: everyone (also themself). Leader: everyone except themself. Member: nobody. */}
                     {permissions.canManageMembers &&
-                      (m.teamRole !== 'LEADER' || permissions.canSetLeader) &&
-                      m.membershipId !== me.membershipId && (
+                      (permissions.canSetLeader || (m.teamRole !== 'LEADER' && m.membershipId !== me.membershipId)) && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -254,15 +254,7 @@ const MembersTab: React.FC<{ data: NonNullable<ReturnType<typeof useTeam>['data'
           {team.members.length === 0 && team.pendingInvitations.length === 0 && <EmptyState title="No members yet" />}
         </CardContent>
       </Card>
-      {inviteOpen && (
-        <InviteDialog
-          slug={org.slug}
-          open
-          isAdmin={isAdminMe(me)}
-          fixedTeamId={isAdminMe(me) ? undefined : team.id}
-          onClose={() => setInviteOpen(false)}
-        />
-      )}
+      {inviteOpen && <InviteDialog slug={org.slug} open defaultTeamId={team.id} onClose={() => setInviteOpen(false)} />}
     </div>
   );
 };
