@@ -30,7 +30,8 @@ export const createApp = () => {
 
   // Security headers & body limit (100 kB)
   app.use(helmet());
-  app.use(express.json({ limit: '100kb' }));
+  // 1 MB: room for very long complaint descriptions (no length limit on the form).
+  app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
   // Logging

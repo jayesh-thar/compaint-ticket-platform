@@ -47,7 +47,10 @@ export const TeamsPage: React.FC = () => {
     }
   };
 
-  const teams = data?.teams ?? [];
+  // Non-admins see only their own teams (and the teams of categories they lead).
+  const teams = (data?.teams ?? []).filter(
+    (t) => admin || me.teamIds.includes(t.id) || t.categories.some((c) => me.leadCategoryIds.includes(c.id))
+  );
   const groups = [
     ...(cats?.categories ?? []).map((c) => ({
       key: c.id,

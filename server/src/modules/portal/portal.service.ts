@@ -16,7 +16,8 @@ import { STAGE_LABEL } from '../tickets/stage-machine.js';
  */
 
 export const complaintSchema = z.object({
-  name: z.string().trim().min(2, 'Please enter your name').max(100),
+  // No length limits on what the customer writes (owner's request); only "not empty".
+  name: z.string().trim().min(1, 'Please enter your name'),
   email: z.string().trim().email('Invalid email address').max(254).transform(normalizeEmail),
   phoneCode: z
     .string()
@@ -27,8 +28,8 @@ export const complaintSchema = z.object({
     .trim()
     .regex(/^[0-9 ()-]{4,20}$/, 'Enter a valid phone number'),
   categoryId: z.string().uuid().nullable().optional(),
-  subject: z.string().trim().min(3, 'Subject must be at least 3 characters').max(200),
-  description: z.string().trim().min(10, 'Please describe the problem in a few sentences').max(10000),
+  subject: z.string().trim().min(1, 'Please enter a subject'),
+  description: z.string().trim().min(1, 'Please describe the problem'),
   /** Honeypot: humans never see this field; bots fill it. */
   website: z.string().max(200).optional(),
 });

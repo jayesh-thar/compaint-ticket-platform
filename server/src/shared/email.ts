@@ -26,14 +26,8 @@ export class ConsoleEmailTransport implements EmailTransport {
     const to = sanitizeHeader(options.to);
     const subject = sanitizeHeader(options.subject);
 
-    logger.info(
-      {
-        to,
-        subject,
-        preview: options.text,
-      },
-      `[EMAIL - CONSOLE TRANSPORT] To: ${to} | Subject: ${subject}`
-    );
+    // One short line; the email text is never logged (it can contain links with tokens).
+    logger.info(`[EMAIL - console] To: ${to} | Subject: ${subject}`);
 
     // Email is not set up yet: print the link as JSON so it can be opened by hand.
     // Never in tests (noise) and never in production (env.ts refuses console there).

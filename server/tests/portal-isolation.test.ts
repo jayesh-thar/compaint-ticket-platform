@@ -58,6 +58,15 @@ describe('Public complaint form and tracking (README 0.4, D-22)', () => {
     ).toBe(404);
   });
 
+  it('accepts very long text: no length limit on the complaint form', async () => {
+    await buildWorld('acme');
+    const long = 'x'.repeat(50_000);
+    const res = await complaint(app, 'acme', { subject: 's'.repeat(1000), description: long });
+    expect(res.status).toBe(201);
+    expect((await prisma.ticket.findFirstOrThrow()).description).toHaveLength(50_000);
+    expect((await complaint(app, 'acme', { description: '   ' })).body.error.fields.description).toBeDefined();
+  });
+
   it('refuses a closed portal, unknown category, bad phone; a bot filling the honeypot stores nothing', async () => {
     const w = await buildWorld('acme');
     const other = await buildWorld('other');
@@ -79,7 +88,7 @@ describe('Public complaint form and tracking (README 0.4, D-22)', () => {
     await buildWorld('acme');
     // The limiter counts per process, so earlier tests in this file already used
     // some of the 10. Exactly 11 requests in total are needed to see a 429.
-    const earlier = 5; // 1 + 4 requests sent by the two tests above
+    const earlier = 7; // 1 + 2 + 4 requests sent by the three tests above
     let accepted = 0;
     let blocked = await complaint(app, 'acme');
     while (blocked.status === 201 && accepted < 20) {

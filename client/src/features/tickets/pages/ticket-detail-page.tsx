@@ -92,8 +92,8 @@ export const TicketDetailPage: React.FC = () => {
 
       {opError != null && <ErrorState message={errorMessage(opError)} />}
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="space-y-5 lg:col-span-2">
+      <div className="grid gap-5 lg:grid-cols-3 [&>*]:min-w-0">
+        <div className="min-w-0 space-y-5 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-base">What to do now</CardTitle>

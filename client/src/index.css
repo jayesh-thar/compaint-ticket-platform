@@ -24,3 +24,11 @@
     --radius: 0.5rem;
   }
 }
+
+/* Long words or links without spaces (e.g. "aaaaaaaa...") wrap instead of
+   running out of their box, on every page and screen size. */
+@layer base {
+  body {
+    overflow-wrap: anywhere;
+  }
+}

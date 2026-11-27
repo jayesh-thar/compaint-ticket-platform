@@ -29,11 +29,15 @@ export const logger = pino({
           target: 'pino-pretty',
           options: {
             colorize: true,
-            ignore: 'pid,hostname',
+            // One readable line per request: the message already says method, url, status, time.
+            ignore: 'pid,hostname,req,res,responseTime',
           },
         }
       : undefined,
 });
+
+/** Express rewrites req.url inside routers; originalUrl is the full path. */
+const fullUrl = (req: { url?: string }) => (req as { originalUrl?: string }).originalUrl ?? req.url ?? '';
 
 export const httpLogger = pinoHttp({
   logger,
@@ -42,9 +46,26 @@ export const httpLogger = pinoHttp({
     const incoming = req.headers['x-request-id'];
     return typeof incoming === 'string' && /^[\w-]{1,64}$/.test(incoming) ? incoming : crypto.randomUUID();
   },
-  customLogLevel: (_req, res, err) => {
+  // Only what matters: every change (POST/PATCH/PUT/DELETE) and every failure.
+  // Successful page loads (GET, 304) and the live-update stream are not logged.
+  customLogLevel: (req, res, err) => {
     if (res.statusCode >= 500 || err) return 'error';
+    // "Not logged in yet" on page load is normal, not a warning.
+    if (res.statusCode === 401 && fullUrl(req).startsWith('/api/v1/auth/me')) return 'silent';
     if (res.statusCode >= 400) return 'warn';
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return 'silent';
     return 'info';
+  },
+  customSuccessMessage: (req, res, time) =>
+    `${req.method} ${fullUrl(req)} -> ${res.statusCode} (${Math.round(time)} ms)`,
+  customErrorMessage: (req, res) => `${req.method} ${fullUrl(req)} -> ${res.statusCode} failed`,
+  // Small objects for production JSON logs: no header dumps.
+  serializers: {
+    req: (req: { id?: unknown; method?: string; url?: string }) => ({
+      id: req.id,
+      method: req.method,
+      url: fullUrl(req),
+    }),
+    res: (res: { statusCode?: number }) => ({ statusCode: res.statusCode }),
   },
 });

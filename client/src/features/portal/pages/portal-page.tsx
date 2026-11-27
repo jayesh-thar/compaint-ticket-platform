@@ -202,7 +202,7 @@ export const PortalPage: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <Label htmlFor="subject">Subject</Label>
-                <Input id="subject" value={form.subject} onChange={set('subject')} required maxLength={200} />
+                <Input id="subject" value={form.subject} onChange={set('subject')} required />
                 <FieldError message={fields.subject} />
               </div>
               <div className="space-y-1">

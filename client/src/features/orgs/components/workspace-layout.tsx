@@ -85,8 +85,11 @@ export const WorkspaceLayout: React.FC = () => {
   const navItems = [
     { to: `/w/${slug}`, label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: `/w/${slug}/tickets`, label: 'Tickets', icon: Ticket, end: false },
-    { to: `/w/${slug}/teams`, label: 'Teams', icon: UsersRound, end: false },
-    { to: `/w/${slug}/categories`, label: 'Categories', icon: Tags, end: false },
+    { to: `/w/${slug}/teams`, label: isAdmin ? 'Teams' : 'My teams', icon: UsersRound, end: false },
+    // Categories: for the Admin and Category Leads only (members only need their own team).
+    ...(isAdmin || data.me.leadCategoryIds.length > 0
+      ? [{ to: `/w/${slug}/categories`, label: 'Categories', icon: Tags, end: false }]
+      : []),
     ...(isAdmin
       ? [
           { to: `/w/${slug}/members`, label: 'Members', icon: Users, end: false },

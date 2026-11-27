@@ -78,17 +78,15 @@ describe('Organization structure (README 0.2, 0.3, 0.8)', () => {
         leadMembershipId: lead.membership.id,
       })
     ).body.category;
-    await request(app)
-      .post(`/api/v1/public/portals/${w.org.slug}/complaints`)
-      .send({
-        name: 'Cust',
-        email: 'c@x.test',
-        phoneCode: '+1',
-        phone: '5551234',
-        subject: 'Site slow',
-        description: 'The site is very slow today.',
-        categoryId: web.id,
-      });
+    await request(app).post(`/api/v1/public/portals/${w.org.slug}/complaints`).send({
+      name: 'Cust',
+      email: 'c@x.test',
+      phoneCode: '+1',
+      phone: '5551234',
+      subject: 'Site slow',
+      description: 'The site is very slow today.',
+      categoryId: web.id,
+    });
     await api(w.admin).post('/tickets/1/actions/approve', { categoryId: web.id });
     expect((await api(w.catLead).get('/tickets/1')).status).toBe(404); // other category's Lead
     const routed = await api(lead).post('/tickets/1/actions/route', { teamId: w.team1.id });
