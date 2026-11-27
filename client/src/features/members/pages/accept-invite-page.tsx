@@ -97,7 +97,7 @@ export const AcceptInvitePage: React.FC = () => {
           <CardDescription>Open the full link from your invitation email.</CardDescription>
         </CardHeader>
         <CardFooter>
-          <Button variant="outline" onClick={() => navigate('/')}>
+          <Button variant="outline" onClick={() => navigate('/start')}>
             Go to home
           </Button>
         </CardFooter>
@@ -208,7 +208,7 @@ export const AcceptInvitePage: React.FC = () => {
           <Button variant="outline" onClick={switchAccount}>
             Log in with another account
           </Button>
-          <Button variant="ghost" onClick={() => navigate('/')}>
+          <Button variant="ghost" onClick={() => navigate('/start')}>
             Home
           </Button>
         </CardFooter>

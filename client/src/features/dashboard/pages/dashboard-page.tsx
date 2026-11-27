@@ -1,152 +1,124 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Clock, Inbox, Plus, User, UserX } from 'lucide-react';
+import { Workflow } from 'lucide-react';
 import { apiFetch } from '../../../lib/api';
-import { Button } from '../../../components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import {
+  TITLE_WORD,
+  describeMe,
+  orgKeys,
+  useWorkspaceMe,
+  useWorkspaceOrg,
+  type LeaderTitle,
+  type TeamRole,
+} from '../../orgs/org-api';
 import { ErrorState, PageHeader, Spinner } from '../../../components/states';
-import { orgKeys, useWorkspaceOrg } from '../../orgs/org-api';
-import { PRIORITY_LABEL, STATUS_LABEL, type TicketPriority, type TicketStatus } from '../../tickets/tickets-api';
-
-interface Metric {
-  count: number;
-  /** The exact ticket-list query that produced this count. */
-  query: string;
-}
 
 interface Dashboard {
-  metrics: Record<
-    'openWorkload' | 'unassigned' | 'overdue' | 'waitingOnRequester' | 'resolvedLast30Days' | 'myWork',
-    Metric
-  >;
-  byStatus: (Metric & { status: TicketStatus })[];
-  byPriority: (Metric & { priority: TicketPriority })[];
-  byTeam: (Metric & { teamId: string | null; name: string })[];
+  sections: { key: string; title: string; cards: { view: string; label: string; count: number }[] }[];
+  myTeams: {
+    id: string;
+    name: string;
+    teamRole: TeamRole;
+    leaderTitle: LeaderTitle | null;
+    categories: { name: string; teamCount: number }[];
+  }[];
+  canSeeGraph: boolean;
 }
 
-const CARDS: { key: keyof Dashboard['metrics']; label: string; icon: React.ElementType; tone: string }[] = [
-  { key: 'openWorkload', label: 'Open workload', icon: Inbox, tone: 'text-blue-600 bg-blue-50' },
-  { key: 'unassigned', label: 'Unassigned', icon: UserX, tone: 'text-amber-700 bg-amber-50' },
-  { key: 'overdue', label: 'Overdue', icon: AlertTriangle, tone: 'text-red-600 bg-red-50' },
-  { key: 'waitingOnRequester', label: 'Waiting on requester', icon: Clock, tone: 'text-purple-600 bg-purple-50' },
-  {
-    key: 'resolvedLast30Days',
-    label: 'Resolved (30 days)',
-    icon: CheckCircle2,
-    tone: 'text-emerald-600 bg-emerald-50',
-  },
-  { key: 'myWork', label: 'My work', icon: User, tone: 'text-slate-700 bg-slate-100' },
-];
+// React Flow is big: load it only for people who see the graph.
+const FlowGraph = lazy(() => import('../components/flow-graph').then((m) => ({ default: m.FlowGraph })));
 
+/** Cards that mean "someone is waiting for you" turn red when not zero. */
+const URGENT = new Set([
+  'pending_approval',
+  'admin_review',
+  'category_waiting',
+  'team_new',
+  'team_review',
+  'my_requests',
+  'overdue',
+  'team_overdue',
+  'my_overdue',
+]);
+
+/** README 0.9: one page, a section for each thing you are; every card opens the matching list. */
 export const DashboardPage: React.FC = () => {
   const org = useWorkspaceOrg();
-  const query = useQuery({
+  const me = useWorkspaceMe();
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: orgKeys.dashboard(org.slug),
     queryFn: () => apiFetch<Dashboard>(`/orgs/${org.slug}/dashboard`),
   });
-  const list = (qs: string) => `/w/${org.slug}/tickets?${qs}`;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={org.name}
-        description={
-          <>
-            Dashboard · your role: <strong className="text-slate-700">{org.myRole}</strong> · counts include only
-            tickets you can see.
-          </>
-        }
-        actions={
-          <Link to={`/w/${org.slug}/tickets/new`}>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" /> New ticket
-            </Button>
-          </Link>
-        }
-      />
+      <PageHeader title={org.name} description={`Dashboard · you are ${describeMe(me)} · counts update live.`} />
+      {isLoading && <Spinner />}
+      {error && <ErrorState error={error} onRetry={() => refetch()} />}
 
-      {query.isLoading ? (
-        <Spinner />
-      ) : query.isError || !query.data ? (
-        <ErrorState error={query.error} onRetry={() => query.refetch()} />
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-            {CARDS.map(({ key, label, icon: Icon, tone }) => (
-              <Link key={key} to={list(query.data.metrics[key].query)} className="group">
-                <Card className="h-full shadow-sm transition-colors group-hover:border-blue-400">
-                  <CardContent className="flex flex-col gap-2 pt-5">
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${tone}`}>
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <span className="text-3xl font-bold text-slate-900">{query.data.metrics[key].count}</span>
-                    <span className="text-xs font-medium text-slate-500">{label}</span>
-                  </CardContent>
-                </Card>
+      {data?.sections.map((s) => (
+        <section key={s.key} className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">{s.title}</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+            {s.cards.map((c) => (
+              <Link
+                key={c.view}
+                to={`/w/${org.slug}/tickets?view=${c.view}`}
+                className={`rounded-xl border bg-white p-4 shadow-sm transition hover:border-blue-400 ${
+                  URGENT.has(c.view) && c.count > 0 ? 'border-red-200' : 'border-slate-200'
+                }`}
+              >
+                <p
+                  className={`text-2xl font-bold ${URGENT.has(c.view) && c.count > 0 ? 'text-red-600' : 'text-slate-900'}`}
+                >
+                  {c.count}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{c.label}</p>
               </Link>
             ))}
           </div>
+        </section>
+      ))}
 
-          {query.data.metrics.openWorkload.count === 0 ? (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-slate-500">
-                Nothing open right now. New tickets and complaints will show up here.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Breakdown
-                title="Open by status"
-                rows={query.data.byStatus.map((r) => ({ label: STATUS_LABEL[r.status], ...r }))}
-                to={list}
-              />
-              <Breakdown
-                title="Open by priority"
-                rows={query.data.byPriority.map((r) => ({ label: PRIORITY_LABEL[r.priority], ...r }))}
-                to={list}
-              />
-              <Breakdown
-                title="Open by team"
-                rows={query.data.byTeam.map((r) => ({ label: r.name, ...r }))}
-                to={list}
-              />
-            </div>
-          )}
-        </>
+      {data && data.myTeams.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">My teams</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.myTeams.map((t) => (
+              <Link
+                key={t.id}
+                to={`/w/${org.slug}/teams/${t.id}`}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm hover:border-blue-400"
+              >
+                <p className="font-semibold text-slate-900">{t.name}</p>
+                <p className="text-xs text-slate-500">
+                  {t.teamRole === 'LEADER' ? `You are the ${TITLE_WORD[t.leaderTitle ?? 'LEAD']}` : 'You are a member'}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {t.categories.length > 0
+                    ? t.categories.map((c) => `"${c.name}" (${c.teamCount} teams)`).join(' · ')
+                    : 'Not in a category'}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {data?.canSeeGraph && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <Workflow className="h-4 w-4" /> Live flow
+          </h2>
+          <p className="text-xs text-slate-500">
+            Where every ticket is right now. Red boxes have work waiting; green ones are clear. Click a team to open it.
+          </p>
+          <Suspense fallback={<Spinner />}>
+            <FlowGraph slug={org.slug} />
+          </Suspense>
+        </section>
       )}
     </div>
-  );
-};
-
-const Breakdown: React.FC<{
-  title: string;
-  rows: { label: string; count: number; query: string }[];
-  to: (qs: string) => string;
-}> = ({ title, rows, to }) => {
-  const max = Math.max(1, ...rows.map((r) => r.count));
-  return (
-    <Card className="shadow-sm">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ul className="space-y-2">
-          {rows.map((r) => (
-            <li key={r.query}>
-              <Link to={to(r.query)} className="block rounded px-1 py-0.5 hover:bg-slate-50">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-700">{r.label}</span>
-                  <span className="font-semibold text-slate-900">{r.count}</span>
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-slate-100">
-                  <div className="h-full rounded-full bg-blue-500" style={{ width: `${(r.count / max) * 100}%` }} />
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </CardContent>
-    </Card>
   );
 };

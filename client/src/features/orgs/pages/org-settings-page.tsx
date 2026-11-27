@@ -92,7 +92,7 @@ export const OrgSettingsPage: React.FC = () => {
   );
 };
 
-/** Portal on/off (README 8.2): the server refuses "on" until a public category exists. */
+/** Complaint link on/off (README 0.4): customers use /o/:slug without an account. */
 const PortalCard: React.FC<{ org: OrgDetails }> = ({ org }) => {
   const queryClient = useQueryClient();
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
@@ -155,7 +155,8 @@ const PortalCard: React.FC<{ org: OrgDetails }> = ({ org }) => {
         </Button>
         {!org.portalEnabled && (
           <p className="text-xs text-slate-500">
-            You need at least one active public category first (Categories page).
+            When open, share the link with customers (website, QR code, email). Every complaint waits for Admin
+            approval.
           </p>
         )}
       </CardContent>

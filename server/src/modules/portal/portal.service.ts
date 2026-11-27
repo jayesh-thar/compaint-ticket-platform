@@ -1,108 +1,153 @@
 import { z } from 'zod';
-import type { User } from '@prisma/client';
 import { prisma } from '../../config/prisma.js';
+import { logger } from '../../config/logger.js';
 import { AppError } from '../../shared/errors.js';
-import { descriptionSchema, subjectSchema } from '../tickets/tickets.schemas.js';
-import { nextTicketNumber, recordActivity } from '../tickets/tickets.repository.js';
-import { ticketRef } from '../tickets/tickets.mapper.js';
-import { notifyComplaintReceived, notifyNeedsAssignment } from '../notifications/outbox.js';
+import { generateToken, hashToken, normalizeEmail } from '../../shared/crypto.js';
+import { sendComplaintReceivedEmail } from '../../shared/email.js';
+import { publish } from '../../shared/events.js';
+import { notify } from '../notifications/outbox.js';
+import { addActivity, nextNumber } from '../tickets/tickets.service.js';
+import { STAGE_LABEL } from '../tickets/stage-machine.js';
 
 /**
- * The bottom-up entry (README 6.2). The organization comes ONLY from the URL
- * slug; source, status, priority, team and requester are set by the server.
+ * Customer side (D-22): no account. The public form creates a COMPLAINT that
+ * waits for Admin approval; the customer gets a reference and a private
+ * tracking link (random token, only its hash is stored).
  */
 
-export const submitComplaintSchema = z.object({
-  categoryId: z.string({ required_error: 'Choose a category.' }).uuid('Choose a category.'),
-  subject: subjectSchema,
-  description: descriptionSchema,
+export const complaintSchema = z.object({
+  name: z.string().trim().min(2, 'Please enter your name').max(100),
+  email: z.string().trim().email('Invalid email address').max(254).transform(normalizeEmail),
+  phoneCode: z
+    .string()
+    .trim()
+    .regex(/^\+\d{1,4}$/, 'Choose a country code'),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^[0-9 ()-]{4,20}$/, 'Enter a valid phone number'),
+  categoryId: z.string().uuid().nullable().optional(),
+  subject: z.string().trim().min(3, 'Subject must be at least 3 characters').max(200),
+  description: z.string().trim().min(10, 'Please describe the problem in a few sentences').max(10000),
+  /** Honeypot: humans never see this field; bots fill it. */
+  website: z.string().max(200).optional(),
 });
+export const trackSchema = z.object({ token: z.string().min(10).max(200) });
 
-export type SubmitComplaintInput = z.infer<typeof submitComplaintSchema>;
+const unavailable = () => new AppError(404, 'NOT_FOUND', 'This complaint page is not available.');
 
-/** Same answer for "no such organization" and "portal switched off". */
-const unavailable = () => new AppError(404, 'NOT_FOUND', 'This complaint portal is not available.');
-
-const findOpenPortal = async (slug: string) => {
-  const org = await prisma.organization.findUnique({ where: { slug: slug.toLowerCase() } });
-  if (!org || !org.portalEnabled) throw unavailable();
-  return org;
-};
-
-const publicCategories = (orgId: string) =>
-  prisma.category.findMany({
-    where: { organizationId: orgId, isPublic: true, archivedAt: null },
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
+export const getPublicPortal = async (slug: string) => {
+  const org = await prisma.organization.findUnique({
+    where: { slug: slug.toLowerCase() },
+    include: {
+      categories: { where: { archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } },
+    },
   });
-
-/** Public (no login). Safe fields only - nothing about teams, members, or tickets. */
-export const getPortal = async (slug: string) => {
-  const org = await findOpenPortal(slug);
-  const categories = await publicCategories(org.id);
+  if (!org) throw unavailable();
   return {
     portal: {
       name: org.name,
       slug: org.slug,
       intro: org.portalIntro,
-      // Enabled, but every public category was archived: "not accepting complaints".
-      acceptingComplaints: categories.length > 0,
-      categories,
+      accepting: org.portalEnabled,
+      categories: org.portalEnabled ? org.categories : [],
     },
   };
 };
 
-export const submitComplaint = async (user: User, slug: string, input: SubmitComplaintInput) => {
-  const org = await findOpenPortal(slug);
+export const submitComplaint = async (slug: string, input: z.infer<typeof complaintSchema>) => {
+  const org = await prisma.organization.findUnique({ where: { slug: slug.toLowerCase() } });
+  if (!org) throw unavailable();
+  if (!org.portalEnabled)
+    throw new AppError(422, 'VALIDATION_ERROR', `${org.name} is not accepting complaints right now.`);
 
-  // Reference check: the category must be PUBLIC, ACTIVE, and of THIS organization.
-  const category = await prisma.category.findFirst({
-    where: { id: input.categoryId, organizationId: org.id, isPublic: true, archivedAt: null },
-    include: { defaultTeam: true },
-  });
-  if (!category) {
-    throw new AppError(422, 'VALIDATION_ERROR', 'Choose one of the categories shown on this page.', {
-      categoryId: 'Choose one of the categories shown on this page.',
-    });
+  // A bot filled the hidden field: answer like a success, store nothing.
+  if (input.website) {
+    logger.warn({ org: org.slug }, 'Complaint honeypot triggered');
+    return { reference: 'T-0', trackingToken: null, message: 'Complaint registered.' };
   }
-  // An archived default team means "unrouted": Managers triage it (README 10).
-  const teamId = category.defaultTeam && !category.defaultTeam.archivedAt ? category.defaultTeam.id : null;
 
+  let categoryId: string | null = null;
+  if (input.categoryId) {
+    const c = await prisma.category.findFirst({
+      where: { id: input.categoryId, organizationId: org.id, archivedAt: null },
+    });
+    if (!c) throw new AppError(422, 'VALIDATION_ERROR', 'Choose a category from the list.', { categoryId: 'Unknown.' });
+    categoryId = c.id;
+  }
+
+  const rawToken = generateToken();
   const ticket = await prisma.$transaction(async (tx) => {
-    const number = await nextTicketNumber(tx, org.id);
-    const created = await tx.ticket.create({
+    const number = await nextNumber(tx, org.id);
+    const t = await tx.ticket.create({
       data: {
         organizationId: org.id,
         number,
-        source: 'PORTAL',
-        status: 'OPEN',
-        priority: 'MEDIUM', // requesters cannot choose a priority
+        kind: 'COMPLAINT',
+        stage: 'PENDING_APPROVAL',
         subject: input.subject,
         description: input.description,
-        categoryId: category.id,
-        teamId,
-        requesterId: user.id,
-        createdByMembershipId: null,
+        categoryId,
+        customerName: input.name,
+        customerEmail: input.email,
+        customerPhoneCode: input.phoneCode,
+        customerPhone: input.phone,
+        trackingTokenHash: hashToken(rawToken),
       },
     });
-    await recordActivity(tx, {
-      organizationId: org.id,
-      ticketId: created.id,
-      actorUserId: user.id,
-      type: 'CREATED',
-      toValue: ticketRef(number),
-      note: 'Submitted through the portal',
-    });
-    await notifyComplaintReceived(tx, created);
-    await notifyNeedsAssignment(tx, created, user.id);
-    return created;
+    await addActivity(tx, t, null, 'CREATED', { toValue: 'PENDING_APPROVAL', note: 'Submitted by the customer' });
+    await notify(tx, t, 'NEEDS_APPROVAL', null);
+    return t;
   });
 
+  const reference = `T-${ticket.number}`;
+  // Sent directly (not via the outbox) because it carries the tracking token.
+  try {
+    await sendComplaintReceivedEmail(input.email, rawToken, org.name, reference, input.subject);
+  } catch (err) {
+    logger.error({ err, reference }, 'Complaint confirmation email failed');
+  }
+  publish(org.id, 'tickets');
+  return { reference, trackingToken: rawToken, message: 'Complaint registered.' };
+};
+
+/** Status only: no staff names, no comments, no internal data (README 0.4). */
+export const trackComplaint = async (token: string) => {
+  const t = await prisma.ticket.findUnique({
+    where: { trackingTokenHash: hashToken(token) },
+    include: { organization: { select: { name: true, slug: true } }, category: { select: { name: true } } },
+  });
+  if (!t || t.kind !== 'COMPLAINT') throw new AppError(404, 'NOT_FOUND', 'This tracking link is not valid.');
+  const step =
+    t.stage === 'PENDING_APPROVAL'
+      ? 1
+      : t.stage === 'DONE' || t.stage === 'REJECTED'
+        ? 4
+        : t.stage === 'ADMIN_REVIEW' || t.stage === 'TEAM_REVIEW'
+          ? 3
+          : 2;
   return {
     complaint: {
-      reference: ticketRef(ticket.number),
-      number: ticket.number,
-      organization: { name: org.name, slug: org.slug },
+      reference: `T-${t.number}`,
+      organization: t.organization.name,
+      subject: t.subject,
+      category: t.category?.name ?? 'Other',
+      stage: t.stage,
+      status:
+        t.stage === 'DONE'
+          ? 'Resolved'
+          : t.stage === 'REJECTED'
+            ? 'Not accepted'
+            : t.stage === 'PENDING_APPROVAL'
+              ? 'Received - waiting for review'
+              : 'Being worked on',
+      detail:
+        t.stage === 'PENDING_APPROVAL' || t.stage === 'DONE' || t.stage === 'REJECTED' ? STAGE_LABEL[t.stage] : null,
+      step,
+      rejectionReason: t.stage === 'REJECTED' ? t.closeNote : null,
+      submittedAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      finishedAt: t.finishedAt,
     },
   };
 };

@@ -9,7 +9,6 @@ datasource db {
 
 enum MembershipRole {
   ADMIN
-  MANAGER
   STAFF
 }
 
@@ -23,17 +22,34 @@ enum EmailTokenType {
   RESET_PASSWORD
 }
 
-enum TicketSource {
-  INTERNAL
-  PORTAL
+enum TeamRole {
+  LEADER
+  MEMBER
 }
 
-enum TicketStatus {
-  OPEN
+/// Same powers, only the label differs (README 0.2).
+enum LeaderTitle {
+  HEAD
+  LEAD
+  MANAGER
+}
+
+enum TicketKind {
+  COMPLAINT
+  TASK
+}
+
+/// README 0.5
+enum TicketStage {
+  PENDING_APPROVAL
+  AT_CATEGORY
+  AT_TEAM
+  ASSIGNED
   IN_PROGRESS
-  WAITING_ON_REQUESTER
-  RESOLVED
-  CLOSED
+  TEAM_REVIEW
+  ADMIN_REVIEW
+  DONE
+  REJECTED
 }
 
 enum TicketPriority {
@@ -43,44 +59,17 @@ enum TicketPriority {
   URGENT
 }
 
-enum CloseReason {
-  COMPLETED
-  REJECTED
-  CANCELLED
-}
-
-enum CommentVisibility {
-  PUBLIC
-  INTERNAL
-}
-
-enum CommentAuthorType {
-  STAFF
-  REQUESTER
-}
-
-enum ActivityType {
-  CREATED
-  STATUS_CHANGED
-  ASSIGNED
-  UNASSIGNED
-  TEAM_CHANGED
-  PRIORITY_CHANGED
-  DUE_DATE_CHANGED
-  CATEGORY_CHANGED
-  EDITED
-  SUBTICKET_ADDED
-}
-
 enum NotificationType {
-  NEEDS_ASSIGNMENT
+  NEEDS_APPROVAL
+  AT_CATEGORY
+  AT_TEAM
   ASSIGNED_TO_YOU
-  COMPLAINT_RECEIVED
-  STAFF_REPLIED
-  REQUESTER_REPLIED
-  WAITING_ON_YOU
-  RESOLVED
-  CLOSED
+  NEEDS_TEAM_REVIEW
+  NEEDS_ADMIN_REVIEW
+  SENT_BACK
+  TICKET_DONE
+  CUSTOMER_DONE
+  CUSTOMER_REJECTED
 }
 
 enum NotificationStatus {
@@ -91,19 +80,18 @@ enum NotificationStatus {
 }
 
 model User {
-  id               String           @id @default(uuid())
-  email            String           @unique
-  name             String
-  passwordHash     String
-  emailVerifiedAt  DateTime?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  sessions         Session[]
-  emailTokens      EmailToken[]
-  memberships      Membership[]
-  requestedTickets Ticket[]         @relation("Requester")
-  activities       TicketActivity[] @relation("ActivityActor")
-  comments         Comment[]
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String
+  passwordHash    String
+  emailVerifiedAt DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  sessions        Session[]
+  emailTokens     EmailToken[]
+  memberships     Membership[]
+  activities      TicketActivity[] @relation("ActivityActor")
+  comments        Comment[]
 
   @@map("users")
 }
@@ -164,15 +152,18 @@ model Membership {
   userId         String
   role           MembershipRole
   status         MembershipStatus @default(ACTIVE)
+  /// Free text, information only ("Network security engineer").
+  jobTitle       String?
   createdAt      DateTime         @default(now())
   removedAt      DateTime?
 
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  invitationsSent Invitation[] @relation("InvitedBy")
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invitationsSent Invitation[]     @relation("InvitedBy")
   teamMemberships TeamMember[]
-  assignedTickets Ticket[]     @relation("Assignee")
-  createdTickets  Ticket[]     @relation("CreatedBy")
+  ledCategories   Category[]       @relation("CategoryLead")
+  assignments     TicketAssignee[]
+  createdTickets  Ticket[]         @relation("CreatedBy")
 
   @@unique([organizationId, userId])
   @@index([userId, status])
@@ -184,6 +175,10 @@ model Invitation {
   organizationId        String
   email                 String
   role                  MembershipRole
+  jobTitle              String?
+  teamId                String?
+  teamRole              TeamRole?
+  leaderTitle           LeaderTitle?
   tokenHash             String         @unique
   invitedByMembershipId String
   expiresAt             DateTime
@@ -193,9 +188,30 @@ model Invitation {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   invitedBy    Membership   @relation("InvitedBy", fields: [invitedByMembershipId], references: [id], onDelete: Cascade)
+  team         Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, email])
   @@map("invitations")
+}
+
+model Category {
+  id               String    @id @default(uuid())
+  organizationId   String
+  name             String
+  nameKey          String
+  description      String?
+  leadMembershipId String?
+  archivedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead         Membership?  @relation("CategoryLead", fields: [leadMembershipId], references: [id], onDelete: SetNull)
+  teams        Team[]
+  tickets      Ticket[]
+
+  @@unique([organizationId, nameKey])
+  @@map("categories")
 }
 
 model Team {
@@ -210,21 +226,25 @@ model Team {
   updatedAt      DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members      TeamMember[]
+  /// A team can be in several categories; each shows on the complaint form (D-31).
   categories   Category[]
+  members      TeamMember[]
   tickets      Ticket[]
+  invitations  Invitation[]
 
   @@unique([organizationId, nameKey])
   @@map("teams")
 }
 
+/// One LEADER per team is enforced by a partial unique index (migration SQL).
 model TeamMember {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   organizationId String
   teamId         String
   membershipId   String
-  isLead         Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  role           TeamRole     @default(MEMBER)
+  leaderTitle    LeaderTitle?
+  createdAt      DateTime     @default(now())
 
   team       Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
   membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
@@ -234,81 +254,100 @@ model TeamMember {
   @@map("team_members")
 }
 
-model Category {
-  id             String    @id @default(uuid())
-  organizationId String
-  name           String
-  nameKey        String
-  isPublic       Boolean   @default(false)
-  defaultTeamId  String?
-  archivedAt     DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  defaultTeam  Team?        @relation(fields: [defaultTeamId], references: [id], onDelete: SetNull)
-  tickets      Ticket[]
-
-  @@unique([organizationId, nameKey])
-  @@map("categories")
-}
-
 model Ticket {
   id                    String         @id @default(uuid())
   organizationId        String
   // Per-organization reference number (shown as T-42), from organizations.ticketCounter.
   number                Int
-  source                TicketSource
+  kind                  TicketKind
+  stage                 TicketStage
   subject               String
   description           String
-  status                TicketStatus   @default(OPEN)
   priority              TicketPriority @default(MEDIUM)
-  closeReason           CloseReason?
-  closeNote             String?
+  dueDate               DateTime?      @db.Date
+  progress              Int            @default(0)
+  /// Set when the work is given to a temporary group (D-26).
+  groupName             String?
   categoryId            String?
   teamId                String?
-  assigneeId            String? // a Membership (people are assigned inside an organization)
-  requesterId           String? // a User (requesters are not members)
-  createdByMembershipId String? // null for portal complaints
-  parentId              String? // set = this is a sub-ticket (one level only)
-  dueDate               DateTime?      @db.Date
+  createdByMembershipId String? // tasks only
+  // Customer (complaints only). Not a user account (D-22).
+  customerName          String?
+  customerEmail         String?
+  customerPhoneCode     String?
+  customerPhone         String?
+  trackingTokenHash     String?        @unique
+  /// Reason for REJECTED (shown to the customer).
+  closeNote             String?
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
-  resolvedAt            DateTime?
-  closedAt              DateTime?
+  finishedAt            DateTime?
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   category     Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   team         Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  assignee     Membership?      @relation("Assignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  requester    User?            @relation("Requester", fields: [requesterId], references: [id], onDelete: SetNull)
   createdBy    Membership?      @relation("CreatedBy", fields: [createdByMembershipId], references: [id], onDelete: SetNull)
-  parent       Ticket?          @relation("SubTickets", fields: [parentId], references: [id], onDelete: Cascade)
-  subtickets   Ticket[]         @relation("SubTickets")
+  assignees    TicketAssignee[]
+  checklist    ChecklistItem[]
   activities   TicketActivity[]
   comments     Comment[]
 
   @@unique([organizationId, number])
-  @@index([organizationId, status])
-  @@index([organizationId, assigneeId])
+  @@index([organizationId, stage])
   @@index([organizationId, teamId])
-  @@index([organizationId, requesterId])
-  @@index([organizationId, parentId])
+  @@index([organizationId, categoryId])
   @@index([organizationId, updatedAt])
   @@map("tickets")
 }
 
-/// Append-only timeline entry. actorUserId = null means "system".
+/// Current and past assignees. active=false rows keep history and visibility.
+model TicketAssignee {
+  id             String    @id @default(uuid())
+  organizationId String
+  ticketId       String
+  membershipId   String
+  active         Boolean   @default(true)
+  acceptedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  removedAt      DateTime?
+
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, membershipId])
+  @@index([membershipId])
+  @@map("ticket_assignees")
+}
+
+model ChecklistItem {
+  id                 String         @id @default(uuid())
+  organizationId     String
+  ticketId           String
+  title              String
+  priority           TicketPriority @default(MEDIUM)
+  dueDate            DateTime?      @db.Date
+  doneAt             DateTime?
+  doneByMembershipId String?
+  position           Int            @default(0)
+  createdAt          DateTime       @default(now())
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, position])
+  @@map("checklist_items")
+}
+
+/// Append-only history entry. actorUserId = null means "system" or "customer".
 model TicketActivity {
-  id             String       @id @default(uuid())
+  id             String   @id @default(uuid())
   organizationId String
   ticketId       String
   actorUserId    String?
-  type           ActivityType
+  action         String
   fromValue      String?
   toValue        String?
   note           String?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   actor  User?  @relation("ActivityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
@@ -317,16 +356,14 @@ model TicketActivity {
   @@map("ticket_activities")
 }
 
-/// Plain text, immutable (no edit/delete). INTERNAL notes are never shown to requesters.
+/// Internal comment between staff. Plain text, immutable.
 model Comment {
-  id             String            @id @default(uuid())
+  id             String   @id @default(uuid())
   organizationId String
   ticketId       String
   authorUserId   String
-  authorType     CommentAuthorType
-  visibility     CommentVisibility
   body           String
-  createdAt      DateTime          @default(now())
+  createdAt      DateTime @default(now())
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   author User   @relation(fields: [authorUserId], references: [id], onDelete: Cascade)

@@ -39,21 +39,24 @@ export const requireOrgMember = async (req: Request, _res: Response, next: NextF
 
     const membership = await prisma.membership.findFirst({
       where: { organizationId: org.id, userId: req.user.id, status: 'ACTIVE' },
-      include: { teamMemberships: { select: { teamId: true, isLead: true } } },
+      include: {
+        teamMemberships: { select: { teamId: true, role: true } },
+        ledCategories: { where: { archivedAt: null }, select: { id: true } },
+      },
     });
     if (!membership) throw notFound();
-    const { teamMemberships, ...membershipRow } = membership;
+    const { teamMemberships, ledCategories, ...membershipRow } = membership;
 
     req.org = org;
     req.membership = membershipRow;
-    // Archived teams still count: their tickets stay visible and workable (README 10).
     req.actor = {
       userId: req.user.id,
       organizationId: org.id,
       membershipId: membership.id,
       role: membership.role,
       teamIds: teamMemberships.map((t) => t.teamId),
-      leadTeamIds: teamMemberships.filter((t) => t.isLead).map((t) => t.teamId),
+      leadTeamIds: teamMemberships.filter((t) => t.role === 'LEADER').map((t) => t.teamId),
+      leadCategoryIds: ledCategories.map((c) => c.id),
     };
 
     next();

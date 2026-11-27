@@ -8,6 +8,7 @@ import { VerifyEmailPage } from '../features/auth/pages/verify-email-page';
 import { ResendVerificationPage } from '../features/auth/pages/resend-verification-page';
 import { ForgotPasswordPage } from '../features/auth/pages/forgot-password-page';
 import { ResetPasswordPage } from '../features/auth/pages/reset-password-page';
+import { LandingPage } from '../features/landing/pages/landing-page';
 import { OnboardingPage } from '../features/orgs/pages/onboarding-page';
 import { CreateOrgPage } from '../features/orgs/pages/create-org-page';
 import { WorkspaceLayout } from '../features/orgs/components/workspace-layout';
@@ -21,9 +22,8 @@ import { TicketListPage } from '../features/tickets/pages/ticket-list-page';
 import { NewTicketPage } from '../features/tickets/pages/new-ticket-page';
 import { TicketDetailPage } from '../features/tickets/pages/ticket-detail-page';
 import { PortalPage } from '../features/portal/pages/portal-page';
-import { SubmitComplaintPage } from '../features/portal/pages/submit-complaint-page';
-import { MyComplaintsPage } from '../features/my-complaints/pages/my-complaints-page';
-import { MyComplaintDetailPage } from '../features/my-complaints/pages/my-complaint-detail-page';
+import { TrackPage } from '../features/portal/pages/track-page';
+import { TeamPage } from '../features/teams/pages/team-page';
 
 /** Logged in + verified email. */
 const ProtectedShell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -47,38 +47,16 @@ export const AppRouter: React.FC = () => {
           "not verified" and "wrong account", so the #token is never lost in a redirect. */}
       <Route path="/invite" element={<AcceptInvitePage />} />
 
-      {/* Portal: the page is public; submitting needs a verified login (returns here after login). */}
+      {/* Customer side (no account): complaint form from the shared link, private tracking page. */}
       <Route path="/o/:slug" element={<PortalPage />} />
-      <Route
-        path="/o/:slug/submit"
-        element={
-          <ProtectedShell>
-            <SubmitComplaintPage />
-          </ProtectedShell>
-        }
-      />
+      <Route path="/track" element={<TrackPage />} />
 
-      {/* My complaints: the requester side (login is enough to read your own). */}
-      <Route
-        path="/my/complaints"
-        element={
-          <RequireAuth>
-            <MyComplaintsPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/my/complaints/:orgSlug/:number"
-        element={
-          <RequireAuth>
-            <MyComplaintDetailPage />
-          </RequireAuth>
-        }
-      />
+      {/* Public landing page */}
+      <Route path="/" element={<LandingPage />} />
 
-      {/* Onboarding */}
+      {/* Onboarding: home for logged-in users (their organizations, create one) */}
       <Route
-        path="/"
+        path="/start"
         element={
           <ProtectedShell>
             <OnboardingPage />
@@ -109,6 +87,7 @@ export const AppRouter: React.FC = () => {
         <Route path="tickets/:number" element={<TicketDetailPage />} />
         <Route path="members" element={<MembersPage />} />
         <Route path="teams" element={<TeamsPage />} />
+        <Route path="teams/:teamId" element={<TeamPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="settings" element={<OrgSettingsPage />} />
       </Route>

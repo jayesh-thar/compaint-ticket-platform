@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/auth-context';
 import { Button } from '../../../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../components/ui/card';
-import { Building2, MessageSquareText, PlusCircle, ArrowRight, LogOut, AlertCircle } from 'lucide-react';
+import { Building2, MailOpen, PlusCircle, ArrowRight, LogOut, AlertCircle } from 'lucide-react';
 import { useMyOrgs } from '../org-api';
 
 export const OnboardingPage: React.FC = () => {
@@ -14,7 +14,9 @@ export const OnboardingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 px-4 sm:px-6 h-14 flex items-center justify-between">
-        <span className="font-semibold text-slate-900">Complaint &amp; Ticket Portal</span>
+        <Link to="/" className="font-semibold text-slate-900">
+          Complaint &amp; Ticket Portal
+        </Link>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500 hidden sm:inline">{user?.email}</span>
           <Button variant="ghost" size="sm" onClick={logout} className="gap-1">
@@ -26,9 +28,7 @@ export const OnboardingPage: React.FC = () => {
       <main className="w-full max-w-3xl mx-auto p-6 space-y-8">
         <div className="text-center space-y-2 pt-4">
           <h1 className="text-3xl font-extrabold text-slate-900">Welcome, {user?.name}</h1>
-          <p className="text-slate-500 text-sm max-w-md mx-auto">
-            Open one of your organizations, create a new one, or use an organization&apos;s link to submit a complaint.
-          </p>
+          <p className="text-slate-500 text-sm max-w-md mx-auto">Open one of your organizations or create a new one.</p>
         </div>
 
         {isLoading && (
@@ -91,7 +91,9 @@ export const OnboardingPage: React.FC = () => {
                 <Building2 className="h-5 w-5" />
               </div>
               <CardTitle>Create an organization</CardTitle>
-              <CardDescription>Set up a workspace for your college, company, or support department.</CardDescription>
+              <CardDescription>
+                Set up a workspace for your college, company, or support department. You become its Admin.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Link to="/orgs/new">
@@ -105,23 +107,17 @@ export const OnboardingPage: React.FC = () => {
 
           <Card className="shadow-sm">
             <CardHeader>
-              <div className="h-10 w-10 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2">
-                <MessageSquareText className="h-5 w-5" />
+              <div className="h-10 w-10 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center mb-2">
+                <MailOpen className="h-5 w-5" />
               </div>
-              <CardTitle>I want to submit a complaint</CardTitle>
-              <CardDescription>Are you a student or customer?</CardDescription>
+              <CardTitle>Were you invited?</CardTitle>
+              <CardDescription>Team leaders and members join through an invitation link.</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Use your organization&apos;s complaint link, which looks like{' '}
-                <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">/o/&lt;organization&gt;</code>. Ask
-                them for it if you don&apos;t have it.
+                Open the invitation link you received while logged in as the invited email address. The organization
+                then appears in the list above.
               </p>
-              <Link to="/my/complaints" className="mt-3 block">
-                <Button variant="outline" className="w-full">
-                  My complaints
-                </Button>
-              </Link>
             </CardContent>
           </Card>
         </div>

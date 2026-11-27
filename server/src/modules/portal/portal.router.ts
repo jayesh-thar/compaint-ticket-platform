@@ -1,28 +1,23 @@
 import { Router } from 'express';
-import * as portalService from './portal.service.js';
-import { requireAuth, requireVerified } from '../../middleware/auth.js';
-import { complaintLimiter } from '../../middleware/rate-limiter.js';
+import { complaintLimiter, trackLimiter } from '../../middleware/rate-limiter.js';
 import { handle } from '../../shared/params.js';
+import * as portal from './portal.service.js';
 
-// Mounted at /api/v1/public/portals  (no login)
-export const publicPortalRouter = Router();
-publicPortalRouter.get(
-  '/:slug',
-  handle(200, (req) => portalService.getPortal(String(req.params.slug)))
+// Mounted at /api/v1/public (no login: customers are guests, D-22)
+export const publicRouter = Router();
+
+publicRouter.get(
+  '/portals/:slug',
+  handle(200, (req) => portal.getPublicPortal(String(req.params.slug)))
 );
-
-// Mounted at /api/v1/portals  (login + verified email; rate limited per user)
-export const portalRouter = Router();
-portalRouter.post(
-  '/:slug/complaints',
-  requireAuth,
-  requireVerified,
+publicRouter.post(
+  '/portals/:slug/complaints',
   complaintLimiter,
-  handle(201, (req) =>
-    portalService.submitComplaint(
-      req.user!,
-      String(req.params.slug),
-      portalService.submitComplaintSchema.parse(req.body)
-    )
-  )
+  handle(201, (req) => portal.submitComplaint(String(req.params.slug), portal.complaintSchema.parse(req.body)))
+);
+// POST so the token never appears in a URL or access log.
+publicRouter.post(
+  '/track',
+  trackLimiter,
+  handle(200, (req) => portal.trackComplaint(portal.trackSchema.parse(req.body).token))
 );

@@ -1,133 +1,93 @@
 import type { NotificationType, Prisma, Ticket } from '@prisma/client';
 
 /**
- * Outbox (architecture 11): ticket emails are saved as rows INSIDE the same
- * transaction as the change. If the change rolls back, so do its emails; if
- * the email provider is down, the change is still saved and the poller retries.
- *
+ * Outbox: ticket emails are saved as rows INSIDE the same transaction as the
+ * change. If the change rolls back, so do its emails; if the email provider is
+ * down, the change is still saved and the poller retries.
  * Payload = ids only. The email is rendered later from current database state.
  */
 
 type Tx = Prisma.TransactionClient;
-type TicketLike = Pick<Ticket, 'id' | 'organizationId' | 'teamId' | 'assigneeId' | 'requesterId'>;
+type TicketLike = Pick<
+  Ticket,
+  'id' | 'organizationId' | 'teamId' | 'categoryId' | 'createdByMembershipId' | 'customerEmail' | 'kind'
+>;
 
 export interface NotificationPayload {
   ticketId: string;
-  commentId?: string;
 }
 
-const enqueue = async (
+const active = { status: 'ACTIVE' as const };
+const withUser = { user: { select: { id: true, email: true } } };
+
+const admins = (tx: Tx, orgId: string) =>
+  tx.membership.findMany({ where: { organizationId: orgId, role: 'ADMIN', ...active }, include: withUser });
+
+const teamLeader = (tx: Tx, t: TicketLike) =>
+  t.teamId
+    ? tx.membership.findMany({
+        where: { ...active, teamMemberships: { some: { teamId: t.teamId, role: 'LEADER' } } },
+        include: withUser,
+      })
+    : Promise.resolve([]);
+
+const assignees = (tx: Tx, t: TicketLike) =>
+  tx.membership.findMany({
+    where: { ...active, assignments: { some: { ticketId: t.id, active: true } } },
+    include: withUser,
+  });
+
+/** Who hears about each event (README 0.6). Never the person who caused it. */
+const recipients = async (
   tx: Tx,
-  organizationId: string,
-  type: NotificationType,
-  toEmails: string[],
-  payload: NotificationPayload
-) => {
-  const unique = [...new Set(toEmails)];
+  t: TicketLike,
+  type: NotificationType
+): Promise<{ user: { id: string; email: string } }[]> => {
+  switch (type) {
+    case 'NEEDS_APPROVAL':
+    case 'NEEDS_ADMIN_REVIEW':
+      return admins(tx, t.organizationId);
+    case 'AT_CATEGORY': {
+      const c = t.categoryId
+        ? await tx.category.findUnique({ where: { id: t.categoryId }, include: { lead: { include: withUser } } })
+        : null;
+      return c?.lead && c.lead.status === 'ACTIVE' ? [c.lead] : admins(tx, t.organizationId);
+    }
+    case 'AT_TEAM':
+    case 'NEEDS_TEAM_REVIEW': {
+      const l = await teamLeader(tx, t);
+      return l.length > 0 ? l : admins(tx, t.organizationId);
+    }
+    case 'ASSIGNED_TO_YOU':
+    case 'SENT_BACK':
+      return assignees(tx, t);
+    case 'TICKET_DONE': {
+      const creator = t.createdByMembershipId
+        ? await tx.membership.findMany({ where: { id: t.createdByMembershipId, ...active }, include: withUser })
+        : [];
+      return [...(await assignees(tx, t)), ...(await teamLeader(tx, t)), ...creator];
+    }
+    default:
+      return [];
+  }
+};
+
+export const notify = async (tx: Tx, t: TicketLike, type: NotificationType, actorUserId: string | null) => {
+  let emails: string[];
+  if (type === 'CUSTOMER_DONE' || type === 'CUSTOMER_REJECTED') {
+    emails = t.kind === 'COMPLAINT' && t.customerEmail ? [t.customerEmail] : [];
+  } else {
+    emails = (await recipients(tx, t, type)).filter((r) => r.user.id !== actorUserId).map((r) => r.user.email);
+  }
+  const unique = [...new Set(emails)];
   if (unique.length === 0) return 0;
   await tx.notification.createMany({
     data: unique.map((toEmail) => ({
-      organizationId,
+      organizationId: t.organizationId,
       toEmail,
       type,
-      payload: payload as unknown as Prisma.InputJsonValue,
+      payload: { ticketId: t.id } satisfies NotificationPayload as unknown as Prisma.InputJsonValue,
     })),
   });
   return unique.length;
-};
-
-/** Active members' emails, never including the person who caused the event. */
-const emailsOf = (rows: { user: { id: string; email: string } }[], actorUserId: string | null) =>
-  rows.filter((r) => r.user.id !== actorUserId).map((r) => r.user.email);
-
-/**
- * README 9 "Needs assignment": the Leads of the ticket's team; if there is no
- * team, or the team has no Lead, the organization's Managers and Admins.
- */
-export const triageRecipients = async (tx: Tx, ticket: TicketLike, actorUserId: string | null) => {
-  if (ticket.teamId) {
-    const leads = await tx.membership.findMany({
-      where: {
-        organizationId: ticket.organizationId,
-        status: 'ACTIVE',
-        teamMemberships: { some: { teamId: ticket.teamId, isLead: true } },
-      },
-      include: { user: { select: { id: true, email: true } } },
-    });
-    if (leads.length > 0) return emailsOf(leads, actorUserId);
-  }
-  const managers = await tx.membership.findMany({
-    where: { organizationId: ticket.organizationId, status: 'ACTIVE', role: { in: ['ADMIN', 'MANAGER'] } },
-    include: { user: { select: { id: true, email: true } } },
-  });
-  return emailsOf(managers, actorUserId);
-};
-
-const membershipEmail = async (tx: Tx, membershipId: string | null, actorUserId: string | null) => {
-  if (!membershipId) return [];
-  const m = await tx.membership.findFirst({
-    where: { id: membershipId, status: 'ACTIVE' },
-    include: { user: { select: { id: true, email: true } } },
-  });
-  return m ? emailsOf([m], actorUserId) : [];
-};
-
-const requesterEmail = async (tx: Tx, ticket: TicketLike, actorUserId: string | null) => {
-  // Internal tickets (and sub-tickets) have no requester: never any requester email.
-  if (!ticket.requesterId || ticket.requesterId === actorUserId) return [];
-  const u = await tx.user.findUnique({ where: { id: ticket.requesterId }, select: { email: true } });
-  return u ? [u.email] : [];
-};
-
-// ---------- events ----------
-
-/** Created / moved without an assignee. */
-export const notifyNeedsAssignment = async (tx: Tx, ticket: TicketLike, actorUserId: string | null) =>
-  enqueue(tx, ticket.organizationId, 'NEEDS_ASSIGNMENT', await triageRecipients(tx, ticket, actorUserId), {
-    ticketId: ticket.id,
-  });
-
-/** Assigned to someone other than the actor (including sub-tickets). */
-export const notifyAssigned = async (tx: Tx, ticket: TicketLike, actorUserId: string | null) =>
-  enqueue(tx, ticket.organizationId, 'ASSIGNED_TO_YOU', await membershipEmail(tx, ticket.assigneeId, actorUserId), {
-    ticketId: ticket.id,
-  });
-
-/** Either "Assigned to you" or "Needs assignment", whichever applies now. */
-export const notifyRouting = (tx: Tx, ticket: TicketLike, actorUserId: string | null) =>
-  ticket.assigneeId ? notifyAssigned(tx, ticket, actorUserId) : notifyNeedsAssignment(tx, ticket, actorUserId);
-
-export const notifyComplaintReceived = async (tx: Tx, ticket: TicketLike) =>
-  enqueue(tx, ticket.organizationId, 'COMPLAINT_RECEIVED', await requesterEmail(tx, ticket, null), {
-    ticketId: ticket.id,
-  });
-
-export const notifyStaffReplied = async (tx: Tx, ticket: TicketLike, commentId: string, actorUserId: string) =>
-  enqueue(tx, ticket.organizationId, 'STAFF_REPLIED', await requesterEmail(tx, ticket, actorUserId), {
-    ticketId: ticket.id,
-    commentId,
-  });
-
-/** Requester wrote: the assignee; if unassigned, the team Leads / Managers. No content in the email. */
-export const notifyRequesterReplied = async (tx: Tx, ticket: TicketLike, actorUserId: string) => {
-  const to = ticket.assigneeId
-    ? await membershipEmail(tx, ticket.assigneeId, actorUserId)
-    : await triageRecipients(tx, ticket, actorUserId);
-  return enqueue(tx, ticket.organizationId, 'REQUESTER_REPLIED', to, { ticketId: ticket.id });
-};
-
-/** Status emails to the requester: waiting on you, resolved, closed. */
-export const notifyStatusChange = async (tx: Tx, ticket: TicketLike, to: string, actorUserId: string | null) => {
-  const type: NotificationType | null =
-    to === 'WAITING_ON_REQUESTER'
-      ? 'WAITING_ON_YOU'
-      : to === 'RESOLVED'
-        ? 'RESOLVED'
-        : to === 'CLOSED'
-          ? 'CLOSED'
-          : null;
-  if (!type) return 0;
-  return enqueue(tx, ticket.organizationId, type, await requesterEmail(tx, ticket, actorUserId), {
-    ticketId: ticket.id,
-  });
 };

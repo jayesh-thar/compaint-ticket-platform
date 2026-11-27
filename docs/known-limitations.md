@@ -19,3 +19,10 @@ Deliberate MVP trade-offs (README sections 3 and 17, architecture section 17) an
 - **Client:** 0 audit findings.
 - **Browser checks:** the journeys were verified through the API and by building the UI. A full manual click-through and the phone-width check should be done in a browser before the demo.
 - **Seed data uses `.test` email addresses**; they cannot receive real email (fine locally with the console transport).
+
+## Version 3
+
+- Live updates use one in-process event bus: with more than one server instance, a browser only hears about changes made on its own instance (fine for one Render service).
+- The complaint image field is a placeholder ("coming soon"); there is no file storage yet.
+- Email is printed to the console until a domain and Resend are set up (`EMAIL_TRANSPORT=resend`). Production refuses to start with the console transport.
+- The flow graph shows organization-wide counts to every leader (D-29); ticket details still follow the visibility rule.

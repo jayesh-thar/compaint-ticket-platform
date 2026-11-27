@@ -64,33 +64,44 @@ export const getMyOrganizations = async (userId: string) => {
   };
 };
 
-// `org` and the actor were already loaded by requireOrgMember; no second query.
-// `me` lets the UI build role-aware pickers; the server still checks every action.
-export const getOrganization = (org: Organization, actor: Actor) => ({
-  organization: toOrgDto(org, actor.role),
-  me: {
-    membershipId: actor.membershipId,
-    role: actor.role,
-    teamIds: actor.teamIds,
-    leadTeamIds: actor.leadTeamIds,
-  },
-});
+// `me` lets the UI build role-aware screens; the server still checks every action.
+export const getOrganization = async (org: Organization, actor: Actor) => {
+  const [teams, categories, membership] = await Promise.all([
+    prisma.teamMember.findMany({
+      where: { membershipId: actor.membershipId },
+      include: {
+        team: { select: { id: true, name: true, archivedAt: true, categories: { select: { id: true } } } },
+      },
+    }),
+    prisma.category.findMany({
+      where: { id: { in: actor.leadCategoryIds } },
+      select: { id: true, name: true },
+    }),
+    prisma.membership.findUnique({ where: { id: actor.membershipId }, select: { jobTitle: true } }),
+  ]);
+  return {
+    organization: toOrgDto(org, actor.role),
+    me: {
+      membershipId: actor.membershipId,
+      role: actor.role,
+      jobTitle: membership?.jobTitle ?? null,
+      teamIds: actor.teamIds,
+      leadTeamIds: actor.leadTeamIds,
+      leadCategoryIds: actor.leadCategoryIds,
+      teams: teams.map((t) => ({
+        id: t.team.id,
+        name: t.team.name,
+        categoryIds: t.team.categories.map((c) => c.id),
+        archived: t.team.archivedAt !== null,
+        teamRole: t.role,
+        leaderTitle: t.leaderTitle,
+      })),
+      ledCategories: categories,
+    },
+  };
+};
 
 export const updateOrganization = async (orgId: string, myRole: MembershipRole, input: UpdateOrgInput) => {
-  if (input.portalEnabled) {
-    // README 8.2: the portal can only open once there is something to complain about.
-    const publicCategories = await prisma.category.count({
-      where: { organizationId: orgId, isPublic: true, archivedAt: null },
-    });
-    if (publicCategories === 0) {
-      throw new AppError(
-        422,
-        'VALIDATION_ERROR',
-        'Create at least one active public category before enabling the complaint portal.',
-        { portalEnabled: 'Needs at least one active public category.' }
-      );
-    }
-  }
   const updated = await prisma.organization.update({
     where: { id: orgId },
     data: {

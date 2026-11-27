@@ -1,217 +1,117 @@
 =====================================================================
-  COMPLAINT & TICKET PORTAL  -  DEMO + TEST GUIDE (for me)
+  COMPLAINT & TICKET PORTAL  -  HOW TO TEST EVERYTHING (version 3)
 =====================================================================
-Full explanation of the project: docs\PROJECT_GUIDE.md
-(features, flows, architecture, tech, logic, future, Q&A)
+Rules of the app: README.md section 0. No demo data: you create
+everything yourself, starting from an EMPTY database.
 
 ---------------------------------------------------------------------
-0. BEFORE THE DEMO (do this 10 minutes early)
+0. ONE-TIME: EMPTY DATABASE + NEW TABLES
 ---------------------------------------------------------------------
-Needs: PostgreSQL running (pgAdmin shows it), Node installed, both
-.env files filled (server\.env, client\.env).
+Stop "npm run dev" in the server terminal first (Windows locks a
+Prisma file while the server runs). Then in PowerShell:
 
-Terminal 1 (server)  - PowerShell:
     cd "C:\Users\Lenovo\OneDrive\Desktop\New folder\server"
-    npx prisma migrate deploy        # makes sure all tables exist
-    npm run seed                     # demo data (only the first time)
+    npx prisma migrate reset --force --skip-seed   # deletes ALL dev data
+    npx prisma generate
+
+---------------------------------------------------------------------
+1. START THE APP
+---------------------------------------------------------------------
+Terminal 1 (server):
+    cd "C:\Users\Lenovo\OneDrive\Desktop\New folder\server"
     npm run dev                      # http://localhost:5000
-  -> KEEP THIS TERMINAL VISIBLE: all emails (verify links, invites,
-     ticket emails) are printed here (EMAIL_TRANSPORT=console).
+  -> KEEP THIS TERMINAL VISIBLE. Email is not set up, so every link
+     is printed here as JSON:
+
+        ===== EMAIL LINK (console transport) =====
+        { "type": "INVITATION", "to": "...", "link": "http://localhost:5173/invite#token=...", ... }
+
+     Types: INVITATION, RESET_PASSWORD, COMPLAINT_TRACKING.
+     A failed invitation accept prints "INVITATION ACCEPT FAILED"
+     with the reason (wrong account, expired, used, leader taken).
 
 Terminal 2 (client):
     cd "C:\Users\Lenovo\OneDrive\Desktop\New folder\client"
     npm run dev                      # open http://localhost:5173
 
-Browser: one normal window + one PRIVATE/INCOGNITO window
-(two people logged in at the same time = two windows).
-
-Quick health check: http://localhost:5000/api/v1/health
-  -> {"status":"ok","database":"connected"}
-
-Want fresh demo data? (WARNING: deletes ALL data in ctp_dev)
-    cd server ; npx prisma migrate reset ; npm run seed
+Several people at once = several browser profiles / private windows
+(one person per window, because the login is a cookie).
 
 ---------------------------------------------------------------------
-1. DEMO ACCOUNTS  (password for all: Password123!)
+2. ADMIN: BUILD THE ORGANIZATION
 ---------------------------------------------------------------------
-City College   workspace /w/city-college   portal /o/city-college
-  admin@city.test      Admin
-  manager@city.test    Manager
-  itlead@city.test     IT team Lead
-  it1@city.test        IT staff (Ravi)
-  it2@city.test        IT staff (Sara)
-  hostel@city.test     Hostel team Lead
-  student@city.test    Student (requester)
-Acme Shop      workspace /w/acme-shop      portal /o/acme-shop
-  admin@shop.test      Admin of the OTHER organization
-  support@shop.test    Support Lead
-  customer@shop.test   Customer (requester)
+1. http://localhost:5173 -> landing page -> Create account -> Sign in.
+2. "Create organization" (e.g. Demo Co). You are its Admin.
+3. Teams -> create "Server team 01", "Server team 02", "Network".
+4. Categories -> New category "Server issue" -> tick Server team 01
+   and 02 -> Save. The Teams page now shows them grouped under it.
+   (Set its Lead later, once people have joined.)
+5. Members -> Invite:
+     head01@demo.test  team Server team 01, Leader, Head
+     head02@demo.test  team Server team 02, Leader, Lead
+     staff1@demo.test  team Server team 01, Member, job title
+                       "Network layer security eng." (type it)
+     catlead@demo.test no team (will be the Category Lead)
+   Each invite prints a JSON block in terminal 1.
+6. Settings -> "Open the portal" -> copy the complaint link
+   http://localhost:5173/o/<your-slug>
 
 ---------------------------------------------------------------------
-2. OPENING (1 minute) - what to say
+3. PEOPLE JOIN (one private window each)
 ---------------------------------------------------------------------
-"This is a multi-organization complaint and ticket portal. Work comes
-from two directions: managers create internal tasks top-down, and
-students or customers submit complaints bottom-up through a public
-portal. Both become the same kind of ticket, with one status flow, one
-conversation, one history and one dashboard. Every organization's data
-is private - I will show that too."
+For each invited email: register with THAT email, sign in, then open
+its invitation link from terminal 1 -> "Accept".
+ - Open the same link again -> "already used" (it expires on use).
+ - Open a link while logged in as another email -> refused, and the
+   reason appears in terminal 1.
+Back as Admin: Categories -> edit "Server issue" -> Lead = catlead.
+It shows as "Server issue - Lead".
+
+A team leader (head01) can also invite: open the team page ->
+"Invite to this team" (members of their own team only), edit job
+titles, remove members.
 
 ---------------------------------------------------------------------
-3. JOURNEY A - SET UP AN ORGANIZATION  (about 4 min)
+4. CUSTOMER COMPLAINT (the full flow)
 ---------------------------------------------------------------------
-1. Normal window -> http://localhost:5173 -> "Create an account".
-   Register with any email (e.g. dean@demo.test).
-   SAY: "Same answer whether the email exists or not - nobody can probe
-   which accounts exist."
-2. Terminal 1 -> copy the verify link -> open it -> "Email verified".
-   SAY: "The token is in the # part of the link, never sent to the
-   server in the URL, and only its hash is stored."
-3. Log in -> "Create organization" -> name "Demo University", slug
-   auto-fills -> Create. SAY: "I am now Admin. The slug is permanent."
-4. Teams -> create "IT" and "Hostel".
-5. Categories -> "Wi-Fi", default team IT, Show on portal -> Add.
-6. Settings -> "Open the portal" (try it BEFORE step 5 to show it is
-   refused without a public category).
-7. Members -> invite tech@demo.test as STAFF. Terminal shows the invite
-   link. Private window: register tech@demo.test, verify, log in, open
-   the invite link -> "Welcome aboard".
-8. Teams -> add the new member to IT -> "Make Lead".
+1. Any window (no login needed): open /o/<slug>. Fill name, email,
+   country code + phone, category "Server issue", subject, problem.
+   Submit -> reference T-1 + private tracking link (also in terminal 1
+   as COMPLAINT_TRACKING). Open the tracking page: "Received".
+2. Admin: Dashboard -> "Pending approval" = 1, the graph's
+   "Admin approval" box is red. Open T-1 -> Approve -> category
+   "Server issue" (+ priority, deadline). Nobody else saw T-1 before.
+3. catlead: Dashboard -> "Waiting for a team choice" -> T-1 ->
+   "Send to a team" -> Server team 01.
+4. head01: Dashboard "New to my team (assign)" -> T-1 -> Assign ->
+   tick two members -> group name -> Assign. (One person = no group.)
+   Team page -> Groups tab shows the live group.
+5. staff1: Dashboard "Requests to accept" -> Accept -> tick tasks,
+   move the progress slider -> "Submit for review".
+6. head01: "Needs my review" -> Approve work (or Send back + reason).
+7. Admin: "Awaiting final approval" -> Final approval -> Done.
+   The group is dissolved; the ticket is in History for the Admin,
+   the leader and the members; the customer's tracking page says
+   "Resolved". Watch the graph boxes and counts change LIVE in the
+   other windows while you do this (no refresh).
+Other paths: Admin "Reject" (reason shown to the customer), member
+"Decline" (back to the leader), Admin "Move to another team".
 
 ---------------------------------------------------------------------
-4. JOURNEY B - TOP-DOWN WITH SUB-TICKETS  (about 4 min, seeded data)
+5. INTERNAL TASK
 ---------------------------------------------------------------------
-1. Log in as manager@city.test -> Tickets -> "New ticket":
-   subject "Replace lab 2 projector", team IT, no assignee -> Create.
-2. Terminal 1 (within ~15 s): email "T-.. needs assignment" to
-   itlead@city.test. SAY: "Emails go through an outbox: saved in the
-   same transaction, sent by a background job, retried if it fails."
-3. Private window: log in as itlead@city.test -> open the ticket.
-   Assign it to yourself.
-4. "Add sub-ticket" twice: one for Ravi (it1), one for Sara (it2).
-   Shows "0 of 2 done".
-5. Click "Resolve" on the parent -> refused: "Finish the sub-tickets
-   first: T-.., T-.. are still open." SAY: "A parent never finishes
-   before its parts - the rule is in one status machine on the server."
-6. Log in as it1 / it2 (private window) -> open each sub-ticket ->
-   "Start work" -> "Resolve". Parent shows "2 of 2 done".
-7. Lead: parent -> "Start work" -> "Resolve" -> "Close..." (Completed).
-8. Scroll the timeline: every change with who / what / when.
-EXTRA to show: as it1, open a ticket of another team via the URL ->
-"Ticket not found" (visibility rule). As Staff, the New ticket form
-only offers your own team and only you as assignee.
+head01 (or Admin): Tickets -> New task -> team "Network" (or any) ->
+priority, deadline, several tasks inside -> Create. It goes straight
+to that team's leader (no approval, no category), then the same way
+back up: member -> leader approval -> Admin final approval -> Done.
 
 ---------------------------------------------------------------------
-5. JOURNEY C - BOTTOM-UP COMPLAINT  (about 3 min)
+6. WHO SEES WHAT
 ---------------------------------------------------------------------
-1. Private window (logged out): http://localhost:5173/o/city-college
-   -> intro, categories, privacy note -> "Submit a complaint".
-2. It asks you to log in -> log in as student@city.test -> you land
-   back on the form (returnTo).
-3. Category Wi-Fi, subject "Wi-Fi down in my room", description ->
-   Submit -> "Complaint received, reference T-..".
-4. Terminal: "We received your complaint" (to student) and
-   "needs assignment" (to the IT Lead).
-5. Normal window as itlead@city.test -> Tickets -> "Unassigned" queue
-   -> it is there with a "Portal" badge -> assign to Ravi (it1).
-6. Student -> "My complaints" -> sees ONLY their own complaints.
+Admin       everything, all dashboards, members, settings, the graph
+Cat. Lead   tickets of the category (after approval), the graph
+Leader      own team's tickets + history, team page, the graph
+Member      only work assigned to them (+ their past work); no graph
 
----------------------------------------------------------------------
-6. JOURNEY D - COMMUNICATION AND PRIVACY  (about 3 min)
----------------------------------------------------------------------
-1. As it1@city.test on that complaint:
-   - write an INTERNAL NOTE (amber, default): "Router in Block C dead"
-   - switch to PUBLIC REPLY (green): "We are fixing it today"
-   SAY: "The composer defaults to internal - forgetting to choose can
-   never expose a private note."
-2. Student window -> refresh: sees the public reply, NOT the note.
-   Terminal: the "New reply" email contains only the public reply.
-3. Staff: "Wait on requester". Terminal: "We need more information".
-4. Student replies -> status goes back to "Being worked on"
-   automatically; terminal: "The requester replied" email to Ravi
-   (no complaint text in that email on purpose).
-5. Isolation: log in as admin@shop.test (other organization) and open
-   http://localhost:5173/w/city-college/tickets/1 -> "Organization not
-   found". SAY: "404, not 403 - outsiders cannot even learn it exists."
-
----------------------------------------------------------------------
-7. JOURNEY E - COMPLETION  (about 3 min)
----------------------------------------------------------------------
-1. Staff: "Resolve". Terminal: "Your complaint was resolved".
-2. Student: "Yes, it's resolved" -> Closed (Completed).
-3. Student tries to reply -> not possible, "Submit a new complaint"
-   button instead.
-4. Reject path: student submits a junk complaint; Lead -> "Close..."
-   -> reason Rejected -> note is REQUIRED -> "Spam" -> closed.
-5. Auto-close (7 days): the seeded ticket "Printer in the library is
-   offline" is RESOLVED. In pgAdmin (database ctp_dev) run:
-     UPDATE tickets SET "resolvedAt" = now() - interval '8 days'
-     WHERE subject = 'Printer in the library is offline';
-   Restart Terminal 1 (Ctrl+C, npm run dev) - jobs run at start-up -
-   refresh the ticket: Closed (Completed), activity says "System".
-6. Dashboard (/w/city-college): click any card, e.g. "Unassigned 3"
-   -> the list shows exactly 3. SAY: "Card and list use the same query
-   code, and a test checks it for every role."
-
----------------------------------------------------------------------
-8. SHOW THE TESTS  (2 min)
----------------------------------------------------------------------
-STOP Terminal 1 first only if you will run migrations; tests do not
-need that. In a third terminal:
-    cd "C:\Users\Lenovo\OneDrive\Desktop\New folder\server"
-    npm test              # 132 tests, ~20 s, uses ctp_test (not your demo data)
-    npm run lint
-    npm run typecheck
-    cd ..\client
-    npm run lint
-    npm run build
-Good tests to open and explain:
-  server\tests\isolation.test.ts       every endpoint from another org -> 404
-  server\tests\status-machine.test.ts  all 125 status combinations
-  server\tests\dashboard-jobs.test.ts  dashboard = list for every role
-  server\tests\tickets.test.ts         10 parallel creates -> T-1..T-10;
-                                        forced DB failure -> nothing saved
-  server\tests\portal-requester.test.ts requester never sees internal notes
-
----------------------------------------------------------------------
-9. CODE TOUR (if they ask "show me the logic")
----------------------------------------------------------------------
-  server\src\shared\permissions.ts              who may do what (pure functions)
-  server\src\shared\visibility.ts               who may SEE which tickets
-  server\src\modules\tickets\status-machine.ts  the status table + applyTransition
-  server\src\modules\tickets\tickets.service.ts create ticket transaction
-  server\src\middleware\org-member.ts           tenant guard (404 for outsiders)
-  server\src\modules\notifications\poller.ts    email outbox + retries
-  server\src\modules\dashboard\dashboard.service.ts  dashboard = list
-  server\prisma\schema.prisma                   the 13 tables
-  client\src\features\tickets\components\ticket-controls.tsx  buttons from allowedActions
-
----------------------------------------------------------------------
-10. IF SOMETHING GOES WRONG
----------------------------------------------------------------------
-- "Invalid environment variables" at start -> check server\.env.
-- Health says database disconnected -> start PostgreSQL service.
-- Page says "Something went wrong" -> is Terminal 1 (server) running?
-- No email in terminal -> ticket emails come within ~15 s (poller);
-  account emails (verify/reset/invite) appear immediately.
-- "Too many requests" -> rate limit (e.g. 5 wrong passwords); restart
-  the server to clear it (limits are in memory).
-- EPERM error during "prisma migrate dev" -> stop npm run dev first.
-- Seed says "already exists" -> data is there; just log in.
-
----------------------------------------------------------------------
-11. TOP 10 QUESTIONS TO BE READY FOR  (answers: PROJECT_GUIDE.md s.19)
----------------------------------------------------------------------
- 1. Why combine internal tickets and complaints in one system?
- 2. How is one organization's data kept away from another?
- 3. Why sessions and not JWT?
- 4. How are ticket numbers unique when two people create at once?
- 5. What if two people change the status at the same time?
- 6. How do you make sure students never see internal notes?
- 7. Why an email outbox? What if the email provider is down?
- 8. How do the dashboard numbers always match the lists?
- 9. How did you test it? (132 tests, isolation suite, live journeys)
-10. What would you improve next? (attachments, SLA, real-time,
-    reports, AI suggestions, multi-instance scaling)
-
-=====================================================================
+Wipe everything again (deletes ALL dev data):
+    cd server ; npx prisma migrate reset --force --skip-seed

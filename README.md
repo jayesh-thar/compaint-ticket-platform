@@ -5,15 +5,13 @@ managers create internal tickets and assign them downward, and customers or
 students submit complaints upward. Both land in **one ticket system** with one
 lifecycle, one assignment model, one conversation history, and one dashboard.
 
-> **Project status:** Phases 0-10 are built and tested locally: accounts,
-> organizations and invitations, teams and categories, internal tickets with
-> sub-tickets, the status workflow, comments with the email outbox, the
-> complaint portal and "My complaints", the dashboard, auto-close, and a
-> hardening pass (tenant-isolation suite, rate limits, log redaction, lint).
-> Not done yet: deployment (Phase 11) and Docker/CI (Phase 12).
-> Progress is tracked in [`planning.md`](planning.md); demo steps in
-> [`docs/demo-script.md`](docs/demo-script.md); trade-offs in
-> [`docs/known-limitations.md`](docs/known-limitations.md).
+> **Project status:** **Version 3 is built and tested locally** (section 0):
+> landing page, Admin / Category Lead / team leader / member roles, categories
+> that group teams, invitations, the approval-down / review-up ticket flow with
+> groups and checklists, the guest complaint form with tracking link, role
+> dashboards, history, live updates and the live flow graph. Not done yet:
+> deployment (Phase 18) and Docker/CI (Phase 19). How to test everything:
+> [`demo.txt`](demo.txt).
 
 **How the three documents fit together**
 
@@ -29,7 +27,175 @@ same change; do not silently pick one.
 
 ---
 
+## 0. Version 3 redesign (current rules - read this first)
+
+> Decided 2026-11-27 with the project owner and **built** the same day.
+> **This section is the specification.** Sections 4-10 below describe the v2
+> design and are kept as history; where they disagree, this section wins.
+
+### 0.1 What changes in one paragraph
+
+Only staff use the app. Customers never log in: they fill a public form and
+get a reference plus a private tracking link. Every customer complaint first
+waits for **Admin approval**, then flows **Admin -> Category Lead -> Team
+Leader -> member (or a temporary group)**, and finished work flows back **up**:
+member -> Team Leader approval -> Admin final approval -> **History**.
+Internal **tasks** (raised by an Admin or a Team Leader) skip the approval and
+the category and go straight to a team. A live **flow graph** shows where every
+ticket is right now.
+
+### 0.2 People and roles
+
+| Who | What they are | How they get it |
+| --- | --- | --- |
+| Admin | Organization role `ADMIN`. Runs everything: structure, invitations, approvals, can act as any leader. Several allowed; never zero. | Creates the org, or invited as Admin. |
+| Staff | Organization role `STAFF`. Everyone else in the org. | Invited. |
+| Team Leader | **One per team.** A team member with role `LEADER` and a title the Admin picks: **Head, Lead or Manager** (same powers, only the label differs). | Admin sets it (on invite or on the team page). |
+| Team member | Team role `MEMBER`. | Admin or that team's Leader invites/adds them. |
+| Category Lead | One person per category, shown as "**{Category} - Lead**" (e.g. "Server issue - Lead"). Picks which team of the category gets a complaint. | Admin sets it on the category. |
+| Job title | Free text on the membership ("Network security engineer"). The input suggests titles already used in the org (type a new one or pick from the list). Information only - no powers. | Set on invite; edited by Admin or the team's Leader. |
+| Customer | Not a user. Name, email, phone (with country code) are stored on the complaint. | Fills the public form. |
+
+The old org role `MANAGER`, requester accounts, "My complaints", sub-tickets,
+`WAITING_ON_REQUESTER` and auto-close are removed.
+
+### 0.3 Teams and categories
+
+- A **category** groups one or more teams ("Server issue" = "Server team 01" +
+  "Server team 02"). A team can be in **several** categories (D-31); the
+  category form and the team form both use multi-selects.
+- The Teams page shows teams **grouped under their category** (plus "No
+  category"), updating without a page refresh.
+- Each team has its own page `/w/{slug}/teams/{teamId}` with tabs: **Members**,
+  **Tickets** (live), **Groups** (live groups), **History**.
+- The public form lists active categories by name, plus **Other / not sure**.
+
+### 0.4 Two kinds of ticket, one lifecycle
+
+| Kind | Raised by | Starts at |
+| --- | --- | --- |
+| `COMPLAINT` | Customer, via public form `/o/{slug}` | `PENDING_APPROVAL` |
+| `TASK` | Admin (any team) or Team Leader (any team) | `AT_TEAM` of the chosen team |
+
+Ticket fields: reference `T-n`, subject, description, priority
+(`LOW/MEDIUM/HIGH/URGENT`), deadline (date), category, team, assignee(s),
+optional group name, progress 0-100 %, checklist items (title, priority,
+deadline, done), internal comments, activity history. Complaints also hold the
+customer's name, email, country code + phone. An **image** field is shown on the
+form but disabled ("coming soon" - needs file storage later).
+
+### 0.5 Stages
+
+| Stage | Waiting for | Live |
+| --- | --- | :-: |
+| `PENDING_APPROVAL` | Admin to approve or reject the complaint | Yes |
+| `AT_CATEGORY` | Category Lead (or Admin) to choose a team in the category | Yes |
+| `AT_TEAM` | Team Leader (or Admin) to assign a person or a group | Yes |
+| `ASSIGNED` | An assignee to accept | Yes |
+| `IN_PROGRESS` | Assignee(s) working; progress % and checklist updated | Yes |
+| `TEAM_REVIEW` | Team Leader to approve the finished work | Yes |
+| `ADMIN_REVIEW` | Admin final approval | Yes |
+| `DONE` | - (history) | - |
+| `REJECTED` | - (history; note required) | - |
+
+### 0.6 Transitions (one module, exhaustively tested)
+
+| From -> To | Who | Notes |
+| --- | --- | --- |
+| `PENDING_APPROVAL -> AT_CATEGORY` | Admin | Approve into a category that has a Lead. May set priority/deadline. |
+| `PENDING_APPROVAL -> AT_TEAM` | Admin | Approve straight to a team (required for "Other" or a category with no Lead). |
+| `PENDING_APPROVAL -> REJECTED` | Admin | Note required. Customer told. |
+| `AT_CATEGORY -> AT_TEAM` | Category Lead, Admin | Team must belong to that category. |
+| `AT_TEAM -> ASSIGNED` | Team Leader, Admin | One member, or a new group of team members. Leader may pick themself. |
+| `ASSIGNED -> IN_PROGRESS` | An assignee | "Accept". |
+| `ASSIGNED -> AT_TEAM` | Assignee (decline, note), Leader/Admin (unassign) | A declining group member just leaves; the ticket returns to `AT_TEAM` only when nobody is left. |
+| `IN_PROGRESS -> TEAM_REVIEW` | An assignee | "Submit for review". |
+| `TEAM_REVIEW -> ADMIN_REVIEW` | Team Leader, Admin | "Approve". |
+| `TEAM_REVIEW -> IN_PROGRESS` | Team Leader, Admin | "Send back", note required. |
+| `ADMIN_REVIEW -> DONE` | Admin | Final approval. Group dissolved. Customer told. |
+| `ADMIN_REVIEW -> IN_PROGRESS` | Admin | "Send back", note required. |
+| any live stage -> `AT_TEAM` (other team) | Admin | Re-route; clears assignees and group. |
+| any live stage -> `REJECTED` | Admin; a task's creator | Note required. |
+
+`DONE` and `REJECTED` are final. Stage changes use conditional updates
+(`WHERE stage = expected`); the loser gets `409`.
+
+### 0.7 Who sees what
+
+A member sees a ticket if **any** is true: they are Admin (everything,
+including `PENDING_APPROVAL`); they lead the ticket's team; they are the
+ticket's Category Lead and the ticket is past `PENDING_APPROVAL`; they are or
+were an assignee; they created the task. Plain members do **not** see the rest
+of their team's queue. Past work stays visible in **History** to the same
+people.
+
+### 0.8 Invitations
+
+- Admin invites anyone: role (Admin/Staff), job title, optional team + team
+  role (Leader with title, or Member). Team Leaders invite **members of their
+  own team only**.
+- One-time link, 7 days, bound to the invited email; used or revoked links
+  fail with a clear message. The invitee registers or logs in, then accepts.
+- **While email is not set up**, every link (invitation, tracking, reset) is
+  also printed in the server console as a JSON block so it can be opened by
+  hand. Failed accepts (wrong email, expired, used, team already has a
+  Leader) are logged to the console with the reason.
+- Leaders manage their team's members: name, email, status, job title,
+  edit job title, remove from team. Only an Admin removes someone from the
+  organization.
+
+### 0.9 Dashboards (one page, sections by what you are)
+
+- **Admin:** Pending approval, Live tickets, At categories, Unassigned in
+  teams, Overdue, Awaiting final approval, Done (30 days) + the flow graph.
+- **Category Lead:** waiting for a team choice in my category.
+- **Team Leader:** *New to my team (assign)* first, then Waiting for accept,
+  In progress, Needs my review, Overdue, Done (30 days) + the flow graph.
+- **Member:** my requests to accept, in progress, overdue, done; my team, its
+  category and how many teams the category has. No graph.
+- Counts use the same filter as the lists they link to.
+
+### 0.10 Live flow graph
+
+Shown on the dashboard to Admins, Team Leaders and Category Leads (not plain
+members). Nodes: **Customer complaints** and **Internal tasks** (start nodes,
+blinking red dot while work is waiting) -> **Admin approval** -> each
+**Category** -> its **Teams** -> **Final approval (Admin)** -> **Done** (green
+end node), plus **Rejected**. Each node shows its live count top-right; a node
+with waiting work is red, an empty one is green. Leaders see counts for the
+whole organization but can open only tickets they are allowed to see. Updates
+arrive live through Server-Sent Events (`/orgs/{slug}/events`) on every
+create, approve, assign, accept, submit and reject - no refresh needed. Built
+with React Flow (`@xyflow/react`).
+
+### 0.11 Landing page and onboarding
+
+`/` is a public landing page (what the product does, Log in / Create account).
+After login a user with no organization sees only **Create organization** (the
+"submit a complaint" choice is gone - customers use the shared link). Demo
+seed data and demo accounts are removed; the owner creates everything by hand.
+
+### 0.12 New decisions
+
+| ID | Decision | Why |
+| --- | --- | --- |
+| D-22 | Customers are guests (no accounts); private tracking link instead of "My complaints" | Owner's flow: shared link -> form -> confirmation. Replaces D-02. |
+| D-23 | Org roles are only `ADMIN` and `STAFF`; leadership is per team (one Leader, title Head/Lead/Manager) | Owner chose "one leader role, three titles". Replaces D-03. |
+| D-24 | Category = group of teams with one Category Lead; a team is in at most one category | Owner's "group up teams"; one category per team keeps routing unambiguous. |
+| D-25 | New stage model (section 0.5) with approval going down and review going up; replaces statuses, sub-tickets, auto-close | Owner's flow. Checklist items replace sub-tickets. |
+| D-26 | Groups are per ticket: named set of team members, dissolved on `DONE`/`REJECTED`, kept in history | "Group exists until the ticket is approved, then deleted; history shows who worked." |
+| D-27 | Live updates via Server-Sent Events from one in-process event bus | One server instance; no WebSocket or Redis needed. Replaces "no real-time" in section 11. |
+| D-28 | React Flow (`@xyflow/react`) for the graph | Owner approved; pan/zoom/custom nodes for free. |
+| D-29 | Leaders see organization-wide counts on the graph, never other teams' ticket details | The graph is "the visual heart" for every leader; counts reveal no content. |
+| D-30 | Every final approval is by an Admin, for complaints and tasks alike | Owner: "goes to head, then to admin, then history". |
+| D-31 | A team can be in several categories (replaces "at most one" in D-24); a ticket keeps its category when the team is in it, else the team's only category, else none | Owner: one team handles several complaint types, each shown on the form. |
+
+---
+
+
 ## Table of contents
+
+- [0. Version 3 redesign (current rules)](#0-version-3-redesign-current-rules---read-this-first)
 
 1. [Overview](#1-overview)
 2. [Real-world inspiration](#2-real-world-inspiration)
@@ -119,6 +285,10 @@ audit-log screens, inbound email replies, AI features, mobile apps, multiple
 languages, reports/exports. See [section 17](#17-scope-mvp-cut-list-later).
 
 ## 4. Core terminology
+
+> **v2 history.** Sections 4-10 describe version 2. The current rules are in
+> section 0.
+
 
 | Term | Meaning |
 | --- | --- |
@@ -546,6 +716,9 @@ Internal tickets without a requester never send requester emails.
 | Hosting (Phase 11) | Render (one service: API + built React app) + Neon (PostgreSQL) |
 | Containers / CI (last phase) | Docker + Docker Compose, GitHub Actions |
 
+**v3 additions:** React Flow (`@xyflow/react`) for the live graph, Server-Sent
+Events (no library) for live updates.
+
 **Intentionally not used:** Redis, queues (BullMQ), WebSockets, Nginx,
 microservices, Zustand (add only if truly needed), Playwright, OpenAPI
 tooling, Turnstile/CAPTCHA, object storage. Add only when a real requirement
@@ -564,7 +737,7 @@ complaint-ticket-portal/
 │       ├── lib/            # api client, query keys, helpers
 │       └── main.tsx
 ├── server/
-│   ├── prisma/             # schema.prisma, migrations/, seed.ts (dev only)
+│   ├── prisma/             # schema.prisma, migrations/ (no seed data)
 │   ├── scripts/            # one-off scripts (if any)
 │   └── src/
 │       ├── config/         # env parsing (Zod), constants
@@ -639,7 +812,6 @@ cd server
 npm install
 Copy-Item .env.example .env        # then edit DATABASE_URL / TEST_DATABASE_URL
 npx prisma migrate dev
-npm run seed                       # optional: demo data (dev only, password Password123!)
 npm run dev                        # http://localhost:5000
 
 # 3. Client (second terminal)

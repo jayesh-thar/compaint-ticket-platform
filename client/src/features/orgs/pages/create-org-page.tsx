@@ -63,7 +63,7 @@ export const CreateOrgPage: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <Card className="w-full max-w-lg shadow-md">
         <CardHeader>
-          <Link to="/" className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 mb-2 w-fit">
+          <Link to="/start" className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 mb-2 w-fit">
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
           <CardTitle className="text-2xl font-bold">Create organization</CardTitle>
@@ -133,7 +133,7 @@ export const CreateOrgPage: React.FC = () => {
             </div>
           </CardContent>
           <CardFooter className="flex justify-between gap-2">
-            <Link to="/">
+            <Link to="/start">
               <Button type="button" variant="outline">
                 Cancel
               </Button>

@@ -1,6 +1,5 @@
 import { logger } from '../config/logger.js';
 import { processOutboxOnce } from '../modules/notifications/poller.js';
-import { autoCloseResolvedTickets } from './auto-close.js';
 import { runCleanup } from './cleanup.js';
 
 /**
@@ -32,7 +31,6 @@ const schedule = (job: Job) => {
 
 export const jobs: Job[] = [
   { name: 'email-poller', everyMs: 15_000, run: () => processOutboxOnce() },
-  { name: 'auto-close', everyMs: 15 * 60_000, run: () => autoCloseResolvedTickets() },
   { name: 'cleanup', everyMs: 24 * 60 * 60_000, run: () => runCleanup() },
 ];
 

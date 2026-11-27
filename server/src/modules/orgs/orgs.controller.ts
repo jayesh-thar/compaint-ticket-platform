@@ -21,8 +21,12 @@ export const getMyOrgs = async (req: Request, res: Response, next: NextFunction)
   }
 };
 
-export const getOrg = (req: Request, res: Response): void => {
-  res.status(200).json(orgsService.getOrganization(req.org!, req.actor!));
+export const getOrg = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.status(200).json(await orgsService.getOrganization(req.org!, req.actor!));
+  } catch (error) {
+    next(error);
+  }
 };
 
 export const updateOrg = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

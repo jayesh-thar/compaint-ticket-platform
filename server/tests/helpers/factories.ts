@@ -63,15 +63,21 @@ export const createTestOrg = async (
 export const createMember = async (
   organizationId: string,
   role: MembershipRole,
-  opts: { teams?: { teamId: string; isLead?: boolean }[]; name?: string; email?: string } = {}
+  opts: { teams?: { teamId: string; leader?: boolean }[]; name?: string; email?: string; jobTitle?: string } = {}
 ) => {
   const user = await createUser({ name: opts.name, email: opts.email });
   const membership = await prisma.membership.create({
-    data: { organizationId, userId: user.id, role, status: 'ACTIVE' },
+    data: { organizationId, userId: user.id, role, status: 'ACTIVE', jobTitle: opts.jobTitle ?? null },
   });
   for (const t of opts.teams ?? []) {
     await prisma.teamMember.create({
-      data: { organizationId, teamId: t.teamId, membershipId: membership.id, isLead: t.isLead ?? false },
+      data: {
+        organizationId,
+        teamId: t.teamId,
+        membershipId: membership.id,
+        role: t.leader ? 'LEADER' : 'MEMBER',
+        leaderTitle: t.leader ? 'HEAD' : null,
+      },
     });
   }
   const { cookie } = await createSession(user.id);
@@ -81,20 +87,21 @@ export const createMember = async (
 export const createTeam = async (
   organizationId: string,
   name = `Team ${crypto.randomBytes(3).toString('hex')}`,
-  opts: { archived?: boolean } = {}
+  opts: { archived?: boolean; categoryIds?: string[] } = {}
 ) =>
   prisma.team.create({
     data: {
       organizationId,
       name,
       nameKey: name.trim().toLowerCase(),
+      categories: { connect: (opts.categoryIds ?? []).map((id) => ({ id })) },
       archivedAt: opts.archived ? new Date() : null,
     },
   });
 
 export const createCategory = async (
   organizationId: string,
-  opts: { name?: string; isPublic?: boolean; defaultTeamId?: string | null; archived?: boolean } = {}
+  opts: { name?: string; leadMembershipId?: string | null; archived?: boolean } = {}
 ) => {
   const name = opts.name ?? `Category ${crypto.randomBytes(3).toString('hex')}`;
   return prisma.category.create({
@@ -102,8 +109,7 @@ export const createCategory = async (
       organizationId,
       name,
       nameKey: name.trim().toLowerCase(),
-      isPublic: opts.isPublic ?? false,
-      defaultTeamId: opts.defaultTeamId ?? null,
+      leadMembershipId: opts.leadMembershipId ?? null,
       archivedAt: opts.archived ? new Date() : null,
     },
   });
@@ -115,51 +121,4 @@ export const createOrgWithAdmin = async (slug?: string) => {
   const { cookie } = await createSession(admin.id);
   const { org, membership } = await createTestOrg(admin.id, { slug });
   return { org, admin: { user: admin, membership, cookie } };
-};
-
-/** Inserts a ticket directly (bypassing the API), taking the next org number. */
-export const createTicket = async (
-  organizationId: string,
-  data: Partial<{
-    subject: string;
-    source: 'INTERNAL' | 'PORTAL';
-    status: 'OPEN' | 'IN_PROGRESS' | 'WAITING_ON_REQUESTER' | 'RESOLVED' | 'CLOSED';
-    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-    closeReason: 'COMPLETED' | 'REJECTED' | 'CANCELLED' | null;
-    teamId: string | null;
-    categoryId: string | null;
-    assigneeId: string | null;
-    requesterId: string | null;
-    createdByMembershipId: string | null;
-    parentId: string | null;
-    dueDate: Date | null;
-    resolvedAt: Date | null;
-  }> = {}
-) => {
-  const org = await prisma.organization.update({
-    where: { id: organizationId },
-    data: { ticketCounter: { increment: 1 } },
-  });
-  const status = data.status ?? 'OPEN';
-  return prisma.ticket.create({
-    data: {
-      organizationId,
-      number: org.ticketCounter,
-      source: data.source ?? 'INTERNAL',
-      subject: data.subject ?? `Ticket ${org.ticketCounter}`,
-      description: 'A description that is long enough.',
-      status,
-      priority: data.priority ?? 'MEDIUM',
-      closeReason: data.closeReason !== undefined ? data.closeReason : status === 'CLOSED' ? 'COMPLETED' : null,
-      teamId: data.teamId ?? null,
-      categoryId: data.categoryId ?? null,
-      assigneeId: data.assigneeId ?? null,
-      requesterId: data.requesterId ?? null,
-      createdByMembershipId: data.createdByMembershipId ?? null,
-      parentId: data.parentId ?? null,
-      dueDate: data.dueDate ?? null,
-      resolvedAt: data.resolvedAt ?? (status === 'RESOLVED' ? new Date() : null),
-      closedAt: status === 'CLOSED' ? new Date() : null,
-    },
-  });
 };

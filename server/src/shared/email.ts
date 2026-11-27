@@ -6,7 +6,11 @@ export interface SendEmailOptions {
   subject: string;
   text: string;
   html?: string;
+  /** The one link this email exists for. Printed as JSON by the console transport. */
+  link?: { kind: EmailLinkKind; url: string; validFor: string };
 }
+
+export type EmailLinkKind = 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'INVITATION' | 'COMPLAINT_TRACKING';
 
 export interface EmailTransport {
   send(options: SendEmailOptions): Promise<void>;
@@ -30,8 +34,25 @@ export class ConsoleEmailTransport implements EmailTransport {
       },
       `[EMAIL - CONSOLE TRANSPORT] To: ${to} | Subject: ${subject}`
     );
+
+    // Email is not set up yet: print the link as JSON so it can be opened by hand.
+    // Never in tests (noise) and never in production (env.ts refuses console there).
+    if (options.link && env.NODE_ENV !== 'test') {
+      console.log(formatLinkBlock(to, subject, options.link));
+    }
   }
 }
+
+export const formatLinkBlock = (to: string, subject: string, link: NonNullable<SendEmailOptions['link']>): string =>
+  `
+===== EMAIL LINK (console transport) =====
+${JSON.stringify(
+  { type: link.kind, to, subject, link: link.url, validFor: link.validFor, printedAt: new Date().toISOString() },
+  null,
+  2
+)}
+==========================================
+`;
 
 export class ResendEmailTransport implements EmailTransport {
   async send(options: SendEmailOptions): Promise<void> {
@@ -80,6 +101,7 @@ export const sendVerificationEmail = async (toEmail: string, token: string) => {
   await emailTransport.send({
     to: toEmail,
     subject: 'Verify your email address',
+    link: { kind: 'VERIFY_EMAIL', url: verifyUrl, validFor: '24 hours' },
     text: `Welcome! Please verify your email address by opening the following link:\n\n${verifyUrl}\n\nThis link will expire in 24 hours.\n\nReplies to this email are not monitored.`,
   });
 };
@@ -89,6 +111,7 @@ export const sendPasswordResetEmail = async (toEmail: string, token: string) => 
   await emailTransport.send({
     to: toEmail,
     subject: 'Reset your password',
+    link: { kind: 'RESET_PASSWORD', url: resetUrl, validFor: '1 hour' },
     text: `A password reset was requested for your account. You can reset your password using the following link:\n\n${resetUrl}\n\nThis link is valid for 1 hour.\nIf you did not request this, you can safely ignore this email.\n\nReplies to this email are not monitored.`,
   });
 };
@@ -102,11 +125,42 @@ export const sendAccountExistsNoticeEmail = async (toEmail: string) => {
   });
 };
 
-export const sendInvitationEmail = async (toEmail: string, token: string, orgName: string, role: string) => {
+export const sendInvitationEmail = async (toEmail: string, token: string, orgName: string, asWhat: string) => {
   const inviteUrl = `${env.APP_ORIGIN}/invite#token=${token}`;
   await emailTransport.send({
     to: toEmail,
     subject: `You have been invited to join ${orgName}`,
-    text: `You have been invited to join ${orgName} as ${role}.\n\nAccept your invitation by clicking the link below:\n\n${inviteUrl}\n\nThis invitation link is valid for 7 days.\n\nReplies to this email are not monitored.`,
+    link: { kind: 'INVITATION', url: inviteUrl, validFor: '7 days, one use' },
+    text: `You have been invited to join ${orgName} as ${asWhat}.
+
+Create an account or log in with this email address, then open this link:
+
+${inviteUrl}
+
+This invitation link is valid for 7 days and works once.
+
+Replies to this email are not monitored.`,
+  });
+};
+
+export const sendComplaintReceivedEmail = async (
+  toEmail: string,
+  token: string,
+  orgName: string,
+  reference: string,
+  subject: string
+) => {
+  const trackUrl = `${env.APP_ORIGIN}/track#token=${token}`;
+  await emailTransport.send({
+    to: toEmail,
+    subject: `[${orgName}] Your complaint ${reference} is registered`,
+    link: { kind: 'COMPLAINT_TRACKING', url: trackUrl, validFor: 'until the complaint is closed' },
+    text: `Thank you. Your complaint "${subject}" was registered by ${orgName}.
+Your reference is ${reference}.
+
+Follow its progress here (keep this link private):
+${trackUrl}
+
+Replies to this email are not monitored.`,
   });
 };

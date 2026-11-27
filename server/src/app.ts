@@ -16,9 +16,8 @@ import { teamsRouter } from './modules/teams/teams.router.js';
 import { categoriesRouter } from './modules/categories/categories.router.js';
 import { ticketsRouter } from './modules/tickets/tickets.router.js';
 import { commentsRouter } from './modules/comments/comments.router.js';
-import { publicPortalRouter, portalRouter } from './modules/portal/portal.router.js';
-import { requesterRouter } from './modules/requester/requester.router.js';
-import { dashboardRouter } from './modules/dashboard/dashboard.router.js';
+import { publicRouter } from './modules/portal/portal.router.js';
+import { dashboardRouter, graphRouter, eventsRouter } from './modules/dashboard/dashboard.router.js';
 import { serveClient, defaultClientDist } from './shared/serve-client.js';
 
 export const createApp = () => {
@@ -47,10 +46,8 @@ export const createApp = () => {
   // with SPA routes (e.g. /orgs/new, /invite) when Express serves the client build.
   app.use('/api/v1/health', healthRouter);
   app.use('/api/v1/auth', authRouter);
-  app.use('/api/v1/me/tickets', requesterRouter);
   app.use('/api/v1/me', meRouter);
-  app.use('/api/v1/public/portals', publicPortalRouter);
-  app.use('/api/v1/portals', portalRouter);
+  app.use('/api/v1/public', publicRouter);
   app.use('/api/v1/orgs/:slug/members', membersRouter);
   app.use('/api/v1/orgs/:slug/invitations', orgInvitationsRouter);
   app.use('/api/v1/orgs/:slug/teams', teamsRouter);
@@ -58,6 +55,8 @@ export const createApp = () => {
   app.use('/api/v1/orgs/:slug/tickets/:number/comments', commentsRouter);
   app.use('/api/v1/orgs/:slug/tickets', ticketsRouter);
   app.use('/api/v1/orgs/:slug/dashboard', dashboardRouter);
+  app.use('/api/v1/orgs/:slug/graph', graphRouter);
+  app.use('/api/v1/orgs/:slug/events', eventsRouter);
   app.use('/api/v1/orgs', orgsRouter);
   app.use('/api/v1/invitations', invitationsAcceptRouter);
 

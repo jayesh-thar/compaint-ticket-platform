@@ -57,5 +57,8 @@ export const forgotEmailLimiter = limiter(HOUR, 3, (req) => `forgot-email:${body
 // (key = org id), so one busy organization cannot use up another one's allowance.
 export const invitationLimiter = limiter(24 * HOUR, 30, (req) => `invite:${req.org?.id ?? 'unknown'}`);
 
-// Portal complaint submit: 10 / hour per user. Runs after requireVerified (key = user id).
-export const complaintLimiter = limiter(HOUR, 10, (req) => `complaint:${req.user?.id ?? 'unknown'}`);
+// Public complaint form: 10 / hour per IP (customers have no account, D-22).
+export const complaintLimiter = limiter(HOUR, 10, (req) => `complaint:${ip(req)}`);
+
+// Tracking page lookups: 60 / hour per IP (tokens are random; this only slows guessing).
+export const trackLimiter = limiter(HOUR, 60, (req) => `track:${ip(req)}`);

@@ -29,7 +29,7 @@ export const takeReturnTo = (fromQuery: string | null): string => {
   } catch {
     /* ignore */
   }
-  return safePath(fromQuery) ?? safePath(stored) ?? '/';
+  return safePath(fromQuery) ?? safePath(stored) ?? '/start';
 };
 
 export const loginUrl = (returnTo: string) => `/login?returnTo=${encodeURIComponent(returnTo)}`;

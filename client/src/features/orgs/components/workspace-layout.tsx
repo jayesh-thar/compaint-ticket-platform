@@ -16,7 +16,7 @@ import {
   Tags,
   Ticket,
 } from 'lucide-react';
-import { orgKeys, useMyOrgs, type OrgDetails, type WorkspaceMe } from '../org-api';
+import { describeMe, orgKeys, useLiveUpdates, useMyOrgs, type OrgDetails, type WorkspaceMe } from '../org-api';
 
 const Spinner = () => (
   <div className="flex h-screen items-center justify-center">
@@ -41,6 +41,8 @@ export const WorkspaceLayout: React.FC = () => {
     retry: false,
   });
   const { data: myOrgsData } = useMyOrgs();
+  // Live updates for every page of this workspace (README 0.10).
+  useLiveUpdates(data ? slug : '');
 
   // Close the switcher when clicking outside it.
   useEffect(() => {
@@ -68,7 +70,7 @@ export const WorkspaceLayout: React.FC = () => {
         </p>
         <div className="mt-4 flex gap-2">
           {!notFound && <Button onClick={() => refetch()}>Retry</Button>}
-          <Link to="/">
+          <Link to="/start">
             <Button variant="outline">Back to home</Button>
           </Link>
         </div>
@@ -85,8 +87,12 @@ export const WorkspaceLayout: React.FC = () => {
     { to: `/w/${slug}/tickets`, label: 'Tickets', icon: Ticket, end: false },
     { to: `/w/${slug}/teams`, label: 'Teams', icon: UsersRound, end: false },
     { to: `/w/${slug}/categories`, label: 'Categories', icon: Tags, end: false },
-    { to: `/w/${slug}/members`, label: 'Members', icon: Users, end: false },
-    ...(isAdmin ? [{ to: `/w/${slug}/settings`, label: 'Settings', icon: Settings, end: false }] : []),
+    ...(isAdmin
+      ? [
+          { to: `/w/${slug}/members`, label: 'Members', icon: Users, end: false },
+          { to: `/w/${slug}/settings`, label: 'Settings', icon: Settings, end: false },
+        ]
+      : []),
   ];
 
   return (
@@ -104,7 +110,7 @@ export const WorkspaceLayout: React.FC = () => {
               <Building2 className="h-5 w-5 text-blue-600 shrink-0" />
               <span className="truncate">{org.name}</span>
               <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                {org.myRole}
+                {describeMe(data.me)}
               </span>
               <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />
             </button>
@@ -139,7 +145,11 @@ export const WorkspaceLayout: React.FC = () => {
                   >
                     <Plus className="h-4 w-4" /> Create new organization
                   </Link>
-                  <Link role="menuitem" to="/" className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
+                  <Link
+                    role="menuitem"
+                    to="/start"
+                    className="block px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+                  >
                     All organizations
                   </Link>
                 </div>

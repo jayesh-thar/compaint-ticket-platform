@@ -1,5 +1,7 @@
 # Complaint and Ticket Management Portal - Complete Project Guide
 
+> **Version 3 (2026-11-27):** the app was redesigned. Current rules: README section 0. How to test: `demo.txt`. Parts of this guide still describe v2 (Manager role, requester accounts, sub-tickets, auto-close).
+
 > One document that explains the whole project: what it is, why it exists, how
 > it works, how it is built, what tools it uses, where the main logic lives,
 > what can be improved, and answers to the questions reviewers usually ask
@@ -213,7 +215,7 @@ team is one of their teams, **or** they created it.
 - **Cleanup:** expired sessions/tokens and old sent emails are deleted daily.
 
 ### Developer / demo extras
-- Seed script with two demo organizations and accounts (`npm run seed`, refuses to run in production).
+- No seed or demo data: you start from an empty database (removed in v3).
 - Express serves the built React app in production (one URL, no CORS).
 
 ---

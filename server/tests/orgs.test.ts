@@ -126,7 +126,7 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       const { org: orgC } = await createTestOrg(ownerC.id, { slug: 'org-c' });
       await addMember(orgA.id, user.id, 'ADMIN');
       await addMember(orgB.id, user.id, 'STAFF');
-      await addMember(orgC.id, user.id, 'MANAGER', 'REMOVED');
+      await addMember(orgC.id, user.id, 'STAFF', 'REMOVED');
 
       const res = await request(app).get('/api/v1/me/orgs').set('Cookie', cookie);
       expect(res.status).toBe(200);
@@ -158,7 +158,7 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
         portalEnabled: false,
       });
 
-      for (const role of ['MANAGER', 'STAFF'] as const) {
+      for (const role of ['STAFF'] as const) {
         const { user, cookie } = await loggedInUser();
         await addMember(org.id, user.id, role);
         const denied = await request(app).patch('/api/v1/orgs/settings-org').set('Cookie', cookie).send({ name: 'X' });
@@ -269,7 +269,7 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       const admin = await createUser();
       const { org, membership: adminMembership } = await createTestOrg(admin.id, { slug: 'roles-org' });
 
-      for (const role of ['MANAGER', 'STAFF'] as const) {
+      for (const role of ['STAFF'] as const) {
         const { user, cookie } = await loggedInUser();
         await addMember(org.id, user.id, role);
         const base = '/api/v1/orgs/roles-org';
@@ -309,7 +309,7 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       // With a second Admin, the first one can step down...
       const { user: second, cookie: secondCookie } = await loggedInUser();
       const secondMembership = await addMember(org.id, second.id, 'ADMIN');
-      const ok = await request(app).patch(base).set('Cookie', adminCookie).send({ role: 'MANAGER' });
+      const ok = await request(app).patch(base).set('Cookie', adminCookie).send({ role: 'STAFF' });
       expect(ok.status).toBe(200);
 
       // ...and now the second one is the last Admin.
@@ -367,7 +367,7 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       const { user: admin, cookie: adminCookie } = await loggedInUser();
       const { org } = await createTestOrg(admin.id, { slug: 'invite-org', name: 'Invite Org' });
 
-      const res = await invite('invite-org', adminCookie, '  NewMember@Example.com ', 'MANAGER');
+      const res = await invite('invite-org', adminCookie, '  NewMember@Example.com ', 'STAFF');
       expect(res.status).toBe(201);
       expect(res.body.invitation.email).toBe('newmember@example.com');
       expect(spy).toHaveBeenCalledTimes(1);
@@ -392,12 +392,12 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       const ok = await accept(inviteeCookie, token);
       expect(ok.status).toBe(200);
       expect(ok.body.organization).toEqual({ name: 'Invite Org', slug: 'invite-org' });
-      expect(ok.body.role).toBe('MANAGER');
+      expect(ok.body.role).toBe('STAFF');
 
       const membership = await prisma.membership.findFirstOrThrow({
         where: { organizationId: org.id, userId: invitee.id },
       });
-      expect(membership).toMatchObject({ role: 'MANAGER', status: 'ACTIVE' });
+      expect(membership).toMatchObject({ role: 'STAFF', status: 'ACTIVE' });
 
       // Single use.
       const again = await accept(inviteeCookie, token);
@@ -497,14 +497,14 @@ describe('Organizations, Members, Invitations (Phase 3)', () => {
       const oldRow = await addMember(org.id, former.id, 'STAFF', 'REMOVED');
 
       // A removed member is not "already a member", so they can be invited again.
-      expect((await invite('reactivate-org', adminCookie, 'former@example.com', 'MANAGER')).status).toBe(201);
+      expect((await invite('reactivate-org', adminCookie, 'former@example.com', 'ADMIN')).status).toBe(201);
 
       const res = await accept(formerCookie, tokenFromEmail(spy));
       expect(res.status).toBe(200);
       expect(res.body.membershipId).toBe(oldRow.id);
 
       const row = await prisma.membership.findUniqueOrThrow({ where: { id: oldRow.id } });
-      expect(row).toMatchObject({ status: 'ACTIVE', role: 'MANAGER', removedAt: null });
+      expect(row).toMatchObject({ status: 'ACTIVE', role: 'ADMIN', removedAt: null });
       expect(await prisma.membership.count({ where: { organizationId: org.id, userId: former.id } })).toBe(1);
     });
 

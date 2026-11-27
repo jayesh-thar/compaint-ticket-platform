@@ -1,5 +1,22 @@
 # Architecture - Complaint and Ticket Management Portal
 
+> **Version 3 (2026-11-27).** The rules are in README section 0. Changes to
+> this design: org roles `ADMIN`/`STAFF`; `team_members.role` (`LEADER`/`MEMBER`,
+> one Leader per team via a partial unique index) + `leaderTitle`;
+> `teams.categoryId`; `categories.leadMembershipId`; tickets have `kind` and
+> `stage` (machine in `server/src/modules/tickets/stage-machine.ts`),
+> `ticket_assignees` (current and past), `checklist_items`, customer fields and
+> a hashed tracking token; requester accounts, sub-tickets, public comments and
+> auto-close are gone. Visibility and named views live in
+> `server/src/modules/tickets/views.ts` (shared by list, dashboard, graph).
+> New endpoints: `POST /orgs/:slug/tickets/:n/actions/:action`,
+> `PUT .../progress`, `.../checklist`, `GET /orgs/:slug/graph`,
+> `GET /orgs/:slug/events` (SSE, in-process bus `shared/events.ts`),
+> `GET /orgs/:slug/members/job-titles`, `PATCH .../members/:id/job-title`,
+> `GET /orgs/:slug/teams/:id`, `GET /public/portals/:slug`,
+> `POST /public/portals/:slug/complaints`, `POST /public/track`.
+
+
 This document explains **how** the system is built. Product rules live in
 [`README.md`](README.md) (what and why); the order of work lives in
 [`planning.md`](planning.md) (when). Diagrams use Mermaid, which GitHub renders

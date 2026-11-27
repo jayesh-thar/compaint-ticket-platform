@@ -7,7 +7,6 @@ export type ErrorCode =
   | 'CONFLICT'
   | 'INVALID_TRANSITION'
   | 'ASSIGNEE_NOT_ELIGIBLE'
-  | 'OPEN_SUBTICKETS'
   | 'LAST_ADMIN'
   | 'ALREADY_MEMBER'
   | 'RATE_LIMITED'

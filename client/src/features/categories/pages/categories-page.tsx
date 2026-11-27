@@ -1,200 +1,201 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArchiveRestore, Globe, Lock, Plus } from 'lucide-react';
+import { Pencil, Plus } from 'lucide-react';
 import { apiFetch, ClientApiError } from '../../../lib/api';
+import {
+  isAdminMe,
+  useCategories,
+  useMembers,
+  useRefreshOrg,
+  useTeams,
+  useWorkspaceMe,
+  useWorkspaceOrg,
+  type Category,
+} from '../../orgs/org-api';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 import { Label } from '../../../components/ui/label';
-import { Card, CardContent } from '../../../components/ui/card';
 import { Badge, FieldError, Select } from '../../../components/ui/form-controls';
-import { EmptyState, ErrorState, Notice, PageHeader, Spinner, errorMessage } from '../../../components/states';
-import { useCategories, useTeams, useWorkspaceOrg } from '../../orgs/org-api';
+import { EmptyState, ErrorState, PageHeader, Spinner } from '../../../components/states';
 
+/**
+ * README 0.3: a category groups teams (multi-select) and has one Category Lead
+ * ("Server issue - Lead") who picks the team. Customers see category names.
+ */
 export const CategoriesPage: React.FC = () => {
   const org = useWorkspaceOrg();
-  const isAdmin = org.myRole === 'ADMIN';
-  const queryClient = useQueryClient();
-  const categoriesQuery = useCategories(org.slug, isAdmin);
-  const teamsQuery = useTeams(org.slug); // active teams only: archived ones cannot be chosen
-
-  const [name, setName] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
-  const [defaultTeamId, setDefaultTeamId] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
-
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['org', org.slug, 'categories'] });
-
-  const create = useMutation({
-    mutationFn: () =>
-      apiFetch(`/orgs/${org.slug}/categories`, {
-        method: 'POST',
-        body: JSON.stringify({ name, isPublic, defaultTeamId: defaultTeamId || null }),
-      }),
-    onSuccess: async () => {
-      setName('');
-      setDefaultTeamId('');
-      setNotice({ kind: 'ok', text: 'Category created.' });
-      await refresh();
-    },
-    onError: (err) => {
-      if (err instanceof ClientApiError && err.fields) setFieldErrors(err.fields);
-      setNotice({ kind: 'error', text: errorMessage(err) });
-    },
-  });
-
-  const update = useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
-      apiFetch(`/orgs/${org.slug}/categories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-    onSuccess: refresh,
-    onError: (err) => setNotice({ kind: 'error', text: errorMessage(err) }),
-  });
-
-  const categories = categoriesQuery.data?.categories ?? [];
-  const teams = teamsQuery.data?.teams ?? [];
+  const me = useWorkspaceMe();
+  const { data, isLoading, error, refetch } = useCategories(org.slug, isAdminMe(me));
+  const [editing, setEditing] = useState<Category | 'new' | null>(null);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title="Categories"
-        description="Types of complaints. Public categories appear on the portal; a default team routes new tickets."
+        description="Group teams under a category. Customers choose the category on the complaint form."
+        actions={
+          isAdminMe(me) && (
+            <Button className="gap-1" onClick={() => setEditing('new')}>
+              <Plus className="h-4 w-4" /> New category
+            </Button>
+          )
+        }
       />
-
-      {isAdmin && (
-        <Card className="shadow-sm">
-          <CardContent className="pt-6">
-            <form
-              className="grid gap-3 sm:grid-cols-[1fr_auto_auto_auto] sm:items-end"
-              onSubmit={(e) => {
-                e.preventDefault();
-                setFieldErrors({});
-                setNotice(null);
-                create.mutate();
-              }}
-            >
-              <div className="space-y-1">
-                <Label htmlFor="cat-name">Name</Label>
-                <Input
-                  id="cat-name"
-                  placeholder="e.g. Wi-Fi, Refund"
-                  value={name}
-                  maxLength={60}
-                  onChange={(e) => setName(e.target.value)}
-                />
-                <FieldError message={fieldErrors.name} />
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="cat-team">Default team</Label>
-                <Select id="cat-team" value={defaultTeamId} onChange={(e) => setDefaultTeamId(e.target.value)}>
-                  <option value="">No team (Managers triage)</option>
-                  {teams.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </Select>
-                <FieldError message={fieldErrors.defaultTeamId} />
-              </div>
-              <label className="flex h-9 items-center gap-2 text-sm text-slate-700">
-                <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
-                Show on portal
-              </label>
-              <Button type="submit" className="gap-2" disabled={create.isPending || name.trim().length < 2}>
-                <Plus className="h-4 w-4" /> Add
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+      {editing && (
+        <CategoryForm
+          key={editing === 'new' ? 'new' : editing.id}
+          category={editing === 'new' ? null : editing}
+          onDone={() => setEditing(null)}
+        />
       )}
-
-      {notice && <Notice kind={notice.kind}>{notice.text}</Notice>}
-
-      <Card className="shadow-sm">
-        {categoriesQuery.isLoading ? (
-          <Spinner />
-        ) : categoriesQuery.isError ? (
-          <div className="p-4">
-            <ErrorState error={categoriesQuery.error} onRetry={() => categoriesQuery.refetch()} />
-          </div>
-        ) : categories.length === 0 ? (
-          <EmptyState
-            title="No categories yet"
-            hint={isAdmin ? 'Add one above, e.g. "Wi-Fi" routed to IT.' : undefined}
-          />
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {categories.map((c) => (
-              <li
-                key={c.id}
-                className={`flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 ${c.archived ? 'opacity-60' : ''}`}
-              >
-                <div className="min-w-0">
-                  <p className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                    {c.name}
-                    {c.isPublic ? (
-                      <Badge tone="green">
-                        <Globe className="h-3 w-3" /> Public
-                      </Badge>
-                    ) : (
-                      <Badge>
-                        <Lock className="h-3 w-3" /> Internal
-                      </Badge>
-                    )}
-                    {c.archived && <Badge tone="amber">Archived</Badge>}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Routes to:{' '}
-                    {c.defaultTeam
-                      ? `${c.defaultTeam.name}${c.defaultTeam.archived ? ' (archived - unrouted)' : ''}`
-                      : 'no team'}
-                  </p>
-                </div>
-                {isAdmin && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {!c.archived && (
-                      <>
-                        <Select
-                          aria-label={`Default team of ${c.name}`}
-                          className="h-8 w-40 text-xs"
-                          value={c.defaultTeam && !c.defaultTeam.archived ? c.defaultTeam.id : ''}
-                          disabled={update.isPending}
-                          onChange={(e) => update.mutate({ id: c.id, body: { defaultTeamId: e.target.value || null } })}
-                        >
-                          <option value="">No team</option>
-                          {teams.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              {t.name}
-                            </option>
-                          ))}
-                        </Select>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 text-xs"
-                          disabled={update.isPending}
-                          onClick={() => update.mutate({ id: c.id, body: { isPublic: !c.isPublic } })}
-                        >
-                          {c.isPublic ? 'Make internal' : 'Make public'}
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8"
-                      aria-label={c.archived ? `Unarchive ${c.name}` : `Archive ${c.name}`}
-                      disabled={update.isPending}
-                      onClick={() => update.mutate({ id: c.id, body: { archived: !c.archived } })}
-                    >
-                      {c.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
+      {isLoading && <Spinner />}
+      {error && <ErrorState error={error} onRetry={() => refetch()} />}
+      {data?.categories.length === 0 && (
+        <EmptyState title="No categories yet" hint="Complaints then arrive as 'Other' and the Admin picks a team." />
+      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {data?.categories.map((c) => (
+          <Card key={c.id} className={c.archived ? 'opacity-60' : ''}>
+            <CardHeader className="flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle className="text-base">
+                  {c.name} {c.archived && <span className="text-xs font-normal text-slate-400">(archived)</span>}
+                </CardTitle>
+                <p className="mt-1 text-xs text-slate-500">
+                  {c.lead ? `${c.lead.label}: ${c.lead.name}` : 'No Category Lead yet'}
+                </p>
+              </div>
+              {isAdminMe(me) && (
+                <Button variant="ghost" size="icon" aria-label={`Edit ${c.name}`} onClick={() => setEditing(c)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex flex-wrap gap-1">
+                {c.teams.length === 0 && <span className="text-xs text-slate-400">No teams</span>}
+                {c.teams.map((t) => (
+                  <Badge key={t.id}>{t.name}</Badge>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">{c.liveTicketCount} live ticket(s)</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
+  );
+};
+
+const CategoryForm: React.FC<{ category: Category | null; onDone: () => void }> = ({ category, onDone }) => {
+  const org = useWorkspaceOrg();
+  const refresh = useRefreshOrg(org.slug);
+  const { data: teams } = useTeams(org.slug);
+  const { data: members } = useMembers(org.slug);
+  const [name, setName] = useState(category?.name ?? '');
+  const [teamIds, setTeamIds] = useState<string[]>(category?.teams.map((t) => t.id) ?? []);
+  const [leadId, setLeadId] = useState(category?.lead?.membershipId ?? '');
+  const [error, setError] = useState<unknown>(null);
+  const fields = error instanceof ClientApiError ? (error.fields ?? {}) : {};
+
+  const save = async (extra: object = {}) => {
+    setError(null);
+    try {
+      await apiFetch(`/orgs/${org.slug}/categories${category ? `/${category.id}` : ''}`, {
+        method: category ? 'PATCH' : 'POST',
+        body: JSON.stringify({ name, teamIds, leadMembershipId: leadId || null, ...extra }),
+      });
+      await refresh();
+      onDone();
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{category ? `Edit ${category.name}` : 'New category'}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          {error != null && <ErrorState error={error} />}
+          <div className="space-y-1">
+            <Label htmlFor="cat-name">Name (customers see this)</Label>
+            <Input
+              id="cat-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="e.g. Server issue"
+            />
+            <FieldError message={fields.name} />
+          </div>
+          <div className="space-y-1">
+            <Label>Teams in this category</Label>
+            <div className="grid gap-1 rounded-md border border-slate-200 p-2 sm:grid-cols-2">
+              {teams?.teams.length === 0 && <p className="text-xs text-slate-500">Create teams first.</p>}
+              {teams?.teams.map((t) => (
+                <label key={t.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={teamIds.includes(t.id)}
+                    onChange={(e) =>
+                      setTeamIds(e.target.checked ? [...teamIds, t.id] : teamIds.filter((x) => x !== t.id))
+                    }
+                  />
+                  {t.name}
+                  {t.categories.some((c) => c.id !== category?.id) && (
+                    <span className="text-xs text-slate-400">
+                      (also in{' '}
+                      {t.categories
+                        .filter((c) => c.id !== category?.id)
+                        .map((c) => c.name)
+                        .join(', ')}
+                      )
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="cat-lead">{name ? `${name} - Lead` : 'Category Lead'}</Label>
+            <Select id="cat-lead" value={leadId} onChange={(e) => setLeadId(e.target.value)}>
+              <option value="">Nobody yet</option>
+              {members?.members.map((m) => (
+                <option key={m.membershipId} value={m.membershipId}>
+                  {m.name}
+                  {m.jobTitle ? ` - ${m.jobTitle}` : ''}
+                </option>
+              ))}
+            </Select>
+            <p className="text-xs text-slate-500">Chooses which team of the category gets an approved complaint.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit">Save</Button>
+            <Button type="button" variant="outline" onClick={onDone}>
+              Cancel
+            </Button>
+            {category && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-red-600"
+                onClick={() => save({ archived: !category.archived })}
+              >
+                {category.archived ? 'Restore' : 'Archive'}
+              </Button>
+            )}
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   );
 };

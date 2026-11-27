@@ -6,18 +6,12 @@ import type { NotificationPayload } from './outbox.js';
 
 /**
  * Builds the email for an outbox row from CURRENT database state.
- * Rules (README 9): never internal notes, never other tickets, links use
- * APP_ORIGIN, and every email says replies are not monitored.
- * Returns null when there is nothing sensible to send any more.
+ * Staff emails link to the ticket; customer emails never contain staff names,
+ * comments or links that grant access (the tracking link is only in the
+ * confirmation email). Returns null when there is nothing sensible to send.
  */
 
 const FOOTER = '\n\n--\nThis is an automatic message. Replies to this email are not monitored.';
-
-const CLOSE_WORDS: Record<string, string> = {
-  COMPLETED: 'completed',
-  REJECTED: 'rejected',
-  CANCELLED: 'cancelled',
-};
 
 export const renderNotification = async (n: Notification): Promise<Omit<SendEmailOptions, 'to'> | null> => {
   const payload = n.payload as unknown as NotificationPayload;
@@ -29,66 +23,41 @@ export const renderNotification = async (n: Notification): Promise<Omit<SendEmai
 
   const ref = `T-${ticket.number}`;
   const org = ticket.organization.name;
-  const memberLink = `${env.APP_ORIGIN}/w/${ticket.organization.slug}/tickets/${ticket.number}`;
-  const requesterLink = `${env.APP_ORIGIN}/my/complaints/${ticket.organization.slug}/${ticket.number}`;
+  const link = `${env.APP_ORIGIN}/w/${ticket.organization.slug}/tickets/${ticket.number}`;
   const team = ticket.team?.name ?? 'no team';
+  const staff = (subject: string, line: string) => ({
+    subject: `[${org}] ${ref} ${subject}: ${ticket.subject}`,
+    text: `${line}\n\n${ref} "${ticket.subject}" (${team})\n${link}${FOOTER}`,
+  });
 
   switch (n.type) {
-    case 'NEEDS_ASSIGNMENT':
-      return {
-        subject: `[${org}] ${ref} needs assignment: ${ticket.subject}`,
-        text: `${ref} "${ticket.subject}" (${team}) has no assignee yet.\n\nOpen it to assign someone:\n${memberLink}${FOOTER}`,
-      };
+    case 'NEEDS_APPROVAL':
+      return staff('needs your approval', 'A new customer complaint is waiting for Admin approval.');
+    case 'AT_CATEGORY':
+      return staff('needs a team', 'Please choose which team of your category handles this ticket.');
+    case 'AT_TEAM':
+      return staff('needs assignment', 'This ticket arrived in your team. Please assign a member or a group.');
     case 'ASSIGNED_TO_YOU':
+      return staff('was assigned to you', 'You were assigned to this ticket. Please accept it to start.');
+    case 'NEEDS_TEAM_REVIEW':
+      return staff('is ready for your review', 'The work was submitted. Please approve it or send it back.');
+    case 'NEEDS_ADMIN_REVIEW':
+      return staff('needs final approval', 'The team leader approved this work. It needs your final approval.');
+    case 'SENT_BACK':
+      return staff('was sent back', 'Your work was sent back with a note. Please open the ticket.');
+    case 'TICKET_DONE':
+      return staff('is done', 'The Admin gave final approval. The ticket moved to history.');
+    case 'CUSTOMER_DONE':
       return {
-        subject: `[${org}] ${ref} was assigned to you: ${ticket.subject}`,
-        text: `You are now the assignee of ${ref} "${ticket.subject}" (${team}).\n\n${memberLink}${FOOTER}`,
+        subject: `[${org}] Your complaint ${ref} is resolved`,
+        text: `${org} has resolved your complaint "${ticket.subject}".\nYou can see the final status with the tracking link from your confirmation email.${FOOTER}`,
       };
-    case 'REQUESTER_REPLIED':
-      // No content on purpose: complaint text stays inside the app.
+    case 'CUSTOMER_REJECTED':
       return {
-        subject: `[${org}] The requester replied on ${ref}`,
-        text: `The requester added a reply to ${ref} "${ticket.subject}".\n\nRead it here:\n${memberLink}${FOOTER}`,
-      };
-    case 'COMPLAINT_RECEIVED':
-      return {
-        subject: `[${org}] We received your complaint ${ref}`,
-        text: `Thank you. Your complaint "${ticket.subject}" was received by ${org}.\nYour reference is ${ref}.\n\nFollow it here:\n${requesterLink}${FOOTER}`,
-      };
-    case 'STAFF_REPLIED': {
-      // Only a PUBLIC comment of THIS ticket can ever be quoted (filtered in the query).
-      const comment = payload.commentId
-        ? await prisma.comment.findFirst({
-            where: {
-              id: payload.commentId,
-              ticketId: ticket.id,
-              organizationId: n.organizationId,
-              visibility: 'PUBLIC',
-            },
-          })
-        : null;
-      if (!comment) return null;
-      return {
-        subject: `[${org}] New reply on your complaint ${ref}`,
-        text: `${org} replied to your complaint "${ticket.subject}":\n\n${comment.body}\n\nReply or follow it here:\n${requesterLink}${FOOTER}`,
-      };
-    }
-    case 'WAITING_ON_YOU':
-      return {
-        subject: `[${org}] We need more information about ${ref}`,
-        text: `${org} needs more information to continue with your complaint "${ticket.subject}".\n\nPlease reply here:\n${requesterLink}${FOOTER}`,
-      };
-    case 'RESOLVED':
-      return {
-        subject: `[${org}] Your complaint ${ref} was resolved`,
-        text: `${org} marked your complaint "${ticket.subject}" as resolved.\n\nIf it is fixed, confirm it. If not, reply within 7 days and it will be reopened; otherwise it closes automatically.\n${requesterLink}${FOOTER}`,
-      };
-    case 'CLOSED':
-      return {
-        subject: `[${org}] Your complaint ${ref} was closed`,
-        text: `Your complaint "${ticket.subject}" was closed (${CLOSE_WORDS[ticket.closeReason ?? 'COMPLETED']}).${
-          ticket.closeReason === 'REJECTED' && ticket.closeNote ? `\nReason: ${ticket.closeNote}` : ''
-        }\n\nIf you still need help, you can submit a new complaint.\n${requesterLink}${FOOTER}`,
+        subject: `[${org}] Your complaint ${ref} was not accepted`,
+        text: `${org} could not accept your complaint "${ticket.subject}".${
+          ticket.closeNote ? `\nReason: ${ticket.closeNote}` : ''
+        }\n\nIf you still need help, you can submit a new complaint.${FOOTER}`,
       };
     default:
       return null;

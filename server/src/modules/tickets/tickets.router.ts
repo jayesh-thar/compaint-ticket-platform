@@ -1,67 +1,73 @@
 import { Router } from 'express';
-import * as ticketsService from './tickets.service.js';
-import * as workflow from './tickets.workflow.js';
-import {
-  assignmentSchema,
-  changeStatusSchema,
-  createSubticketSchema,
-  createTicketSchema,
-  parseTicketNumber,
-  updateTicketSchema,
-} from './tickets.schemas.js';
-import { ticketListQuerySchema } from '../../shared/ticket-filters.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { requireOrgMember } from '../../middleware/org-member.js';
-import { handle } from '../../shared/params.js';
+import { handle, parseIdParam } from '../../shared/params.js';
+import * as tickets from './tickets.service.js';
+import { actionParamSchema, runAction } from './tickets.actions.js';
+import { AppError } from '../../shared/errors.js';
 
-// Mounted at /api/v1/orgs/:slug/tickets. Permissions are checked per ticket in the service.
+// Mounted at /api/v1/orgs/:slug/tickets
 export const ticketsRouter = Router({ mergeParams: true });
 ticketsRouter.use(requireAuth, requireOrgMember);
 
+const num = (raw: unknown) => tickets.parseNumber(raw);
+
 ticketsRouter.get(
   '/',
-  handle(200, (req) => ticketsService.listTickets(req.actor!, ticketListQuerySchema.parse(req.query)))
+  handle(200, (req) => tickets.listTickets(req.actor!, req.query))
 );
-
 ticketsRouter.post(
   '/',
-  handle(201, (req) => ticketsService.createInternalTicket(req.actor!, createTicketSchema.parse(req.body)))
+  handle(201, (req) => tickets.createTask(req.actor!, tickets.createTaskSchema.parse(req.body)))
 );
-
 ticketsRouter.get(
   '/:number',
-  handle(200, (req) => ticketsService.getTicket(req.actor!, parseTicketNumber(req.params.number)))
+  handle(200, (req) => tickets.getTicket(req.actor!, num(req.params.number)))
 );
-
 ticketsRouter.patch(
   '/:number',
   handle(200, (req) =>
-    workflow.updateTicket(req.actor!, parseTicketNumber(req.params.number), updateTicketSchema.parse(req.body))
+    tickets.updateFields(req.actor!, num(req.params.number), tickets.updateFieldsSchema.parse(req.body))
   )
 );
-
-ticketsRouter.post(
-  '/:number/status',
-  handle(200, (req) =>
-    workflow.changeStatus(req.actor!, parseTicketNumber(req.params.number), changeStatusSchema.parse(req.body))
-  )
-);
-
-ticketsRouter.post(
-  '/:number/assignment',
-  handle(200, (req) =>
-    workflow.changeAssignment(req.actor!, parseTicketNumber(req.params.number), assignmentSchema.parse(req.body))
-  )
-);
-
-ticketsRouter.post(
-  '/:number/subtickets',
-  handle(201, (req) =>
-    workflow.createSubticket(req.actor!, parseTicketNumber(req.params.number), createSubticketSchema.parse(req.body))
-  )
-);
-
 ticketsRouter.get(
   '/:number/activity',
-  handle(200, (req) => workflow.listActivity(req.actor!, parseTicketNumber(req.params.number)))
+  handle(200, (req) => tickets.listActivity(req.actor!, num(req.params.number)))
+);
+ticketsRouter.post(
+  '/:number/actions/:action',
+  handle(200, (req) => {
+    const parsed = actionParamSchema.safeParse(req.params.action);
+    if (!parsed.success) throw new AppError(404, 'NOT_FOUND', 'Unknown action.');
+    return runAction(req.actor!, num(req.params.number), parsed.data, req.body);
+  })
+);
+ticketsRouter.put(
+  '/:number/progress',
+  handle(200, (req) =>
+    tickets.updateProgress(req.actor!, num(req.params.number), tickets.progressSchema.parse(req.body))
+  )
+);
+ticketsRouter.post(
+  '/:number/checklist',
+  handle(201, (req) =>
+    tickets.addChecklistItem(req.actor!, num(req.params.number), tickets.addChecklistSchema.parse(req.body))
+  )
+);
+ticketsRouter.patch(
+  '/:number/checklist/:itemId',
+  handle(200, (req) =>
+    tickets.updateChecklistItem(
+      req.actor!,
+      num(req.params.number),
+      parseIdParam(req.params.itemId, 'Task'),
+      tickets.updateChecklistSchema.parse(req.body)
+    )
+  )
+);
+ticketsRouter.delete(
+  '/:number/checklist/:itemId',
+  handle(200, (req) =>
+    tickets.deleteChecklistItem(req.actor!, num(req.params.number), parseIdParam(req.params.itemId, 'Task'))
+  )
 );
